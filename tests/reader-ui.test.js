@@ -31,13 +31,13 @@ test('reader without a finalized session has no demo, paste form or import workf
  const h=await reader();assert.equal(h.reads,0);assert.equal(h.plays,0);assert.equal(h.w.document.querySelector('#reading').hidden,true);
  assert.equal(h.w.document.querySelector('form'),null);assert.match(h.w.document.querySelector('#entry-copy').textContent,/browser toolbar/);h.w.close();
 });
-test('finalized text opens one accessible page and New text opens the menu',async()=>{
+test('finalized text opens one accessible page with entry actions confined to the popup',async()=>{
  const h=await reader({id:'article',record});
  assert.equal(h.w.document.querySelector('#article-title').textContent,'A morning');
  assert.equal(h.article.querySelector('p').textContent,text);
  assert.equal(h.article.children[0].inert,false);assert.equal(h.article.children[1].inert,true);
  assert.equal(h.w.document.querySelector('#page-progress').textContent,'1 / 2');
- await h.w.document.querySelector('#exit').onclick();assert.equal(h.opened,1);h.w.close();
+ assert.equal(h.w.document.querySelector('#exit'),null);assert.equal(h.opened,0);h.w.close();
 });
 test('missing session points back to the popup',async()=>{
  const h=await reader({id:'missing'});assert.equal(h.w.document.querySelector('#entry-title').textContent,'Text unavailable.');assert.equal(h.opened,0);h.w.close();
@@ -101,9 +101,9 @@ test('a finalized reading starts music once without a Play click',async()=>{
  h.resize(400);await settle();assert.equal(h.plays,1);h.w.close();
 });
 
-test('Space controls audio from text, New text and volume without activating their actions',async()=>{
+test('Space controls audio from text and volume without activating their actions',async()=>{
  const h=await reader({id:'article',record});
- for(const target of [h.article,h.w.document.querySelector('#exit'),h.w.document.querySelector('#volume')]){
+ for(const target of [h.article,h.w.document.querySelector('#volume')]){
   const before=h.engine.playing;
   target.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true}));await settle();
   assert.equal(h.engine.playing,!before);assert.equal(h.opened,0);assert.equal(h.article.scrollTop,0);

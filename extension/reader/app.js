@@ -14,12 +14,6 @@ function updatePlayButton(){
 function stop(){
  clearTimeout(fadeTimer);soundToken++;playToken++;starting=false;audio.pause();updatePlayButton();status('Paused');
 }
-$('exit').onclick=async()=>{
- if(typeof globalThis.chrome?.action?.openPopup==='function'){
-  try{await chrome.action.openPopup();message('');return;}catch{}
- }
- message('Open Undertone from your browser toolbar, then choose Paste text, Scan page, or Import file.');
-};
 function preloadNext(){
  if(!audio.playing)return;
  const next=score.sections[current+1];
@@ -104,7 +98,7 @@ addEventListener('keydown',event=>{
 });
 function render(data,meta={}){
  stop();score=data;current=-1;
- $('welcome').hidden=true;$('reading').hidden=false;$('player').hidden=false;$('exit').hidden=false;
+ $('welcome').hidden=true;$('reading').hidden=false;$('player').hidden=false;
  $('article-title').textContent=meta.title||data.title||'Untitled';$('article-title').title=$('article-title').textContent;
  $('byline').textContent=`${meta.author||data.author||'Your reading selection'} · ${Math.max(1,Math.ceil(data.sections.reduce((n,s)=>n+s.text.split(/\s+/).length,0)/220))} min read`;
  pages=[];currentPage=-1;layout();
@@ -130,7 +124,7 @@ function togglePlayback(){if(starting||audio.playing){stop();return;}return star
 $('play').onclick=togglePlayback;
 $('volume').oninput=event=>audio.setVolume(Number(event.target.value)/100);
 function showEmpty(title='Use the extension.',copy='Choose Paste text, Scan page, or Import file from Undertone in your browser toolbar. Your reader opens when the text is ready.'){
- $('reading').hidden=true;$('player').hidden=true;$('exit').hidden=true;$('welcome').hidden=false;$('welcome').removeAttribute('aria-busy');
+ $('reading').hidden=true;$('player').hidden=true;$('welcome').hidden=false;$('welcome').removeAttribute('aria-busy');
  $('entry-title').textContent=title;$('entry-copy').textContent=copy;$('entry-title').focus({preventScroll:true});
 }
 const articleId=new URLSearchParams(location.search).get('article');
