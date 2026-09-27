@@ -21,7 +21,9 @@ test('fresh backend serves APIs/assets without a standalone reader or private fi
       server.once('exit',code=>{clearTimeout(timer);reject(new Error(`Server exited: ${code}`));});
     });
     const base=`http://127.0.0.1:${port}`;
-    let response=await fetch(base+'/');
+    let response=await fetch(base+'/api/health');
+    const health=await response.json();assert.equal(health.ready,false);assert.match(health.version,/^\d+\.\d+\.\d+$/);
+    response=await fetch(base+'/');
     assert.equal(response.status,200);
     assert.match((await response.json()).message,/Chrome toolbar/);
     response=await fetch(base+'/reader/app.js');

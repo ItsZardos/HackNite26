@@ -1,6 +1,6 @@
 const button=document.querySelector('.mascot-toggle');
 const preference=matchMedia('(prefers-reduced-motion: reduce)');
-let paused=false;
+let paused=false,greeting;
 try { paused=localStorage.getItem('undertone-mascot-paused')==='true'; } catch {}
 function update(){
  const still=paused||preference.matches;
@@ -13,4 +13,16 @@ button.addEventListener('click',()=>{
  if(preference.matches)return;
  paused=!paused;try{localStorage.setItem('undertone-mascot-paused',String(paused));}catch{}update();
 });
+function greet(){
+ if(paused||preference.matches)return;
+ clearTimeout(greeting);document.body.dataset.mascotGreeting='true';
+ greeting=setTimeout(()=>{delete document.body.dataset.mascotGreeting;},900);
+}
+button.addEventListener('pointerenter',greet);
+button.addEventListener('focus',greet);
+addEventListener('storage',event=>{
+ if(event.key==='undertone-mascot-paused'){paused=event.newValue==='true';update();}
+});
+function visibility(){document.body.dataset.mascotHidden=String(document.hidden);}
+document.addEventListener('visibilitychange',visibility);visibility();
 preference.addEventListener('change',update);update();

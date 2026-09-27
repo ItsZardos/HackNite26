@@ -234,3 +234,10 @@ test('automatic local scan requires file permission before any read',async()=>{
  await assert.rejects(launch(h,{mode:'scan',tabId:17}),error=>error.code==='FILE_ACCESS_REQUIRED'&&/Enable Allow access/.test(error.message));
  assert.deepEqual(h.calls.map(c=>c[0]),['get']);
 });
+
+test('reviewed document text is scored once without extracting its file again',async()=>{
+ const h=mockChrome();await launch(h,{mode:'import',title:'Edited document.pdf',text:readingText});
+ assert.equal(h.calls.filter(c=>c[0]==='analyze').length,1);assert.ok(!h.calls.some(c=>c[0]==='download'));
+ assert.equal(h.stored['undertone-article-one'].title,'Edited document.pdf');
+ assert.equal(JSON.parse(h.calls[0][2].body).text,readingText.trim());
+});

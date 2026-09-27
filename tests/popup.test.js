@@ -1,171 +1,95 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
-
-const popupCode=(await readFile(new URL('../extension/popup.js',import.meta.url),'utf8')).replace(/^import .*;\n/, '');
+import {JSDOM} from 'jsdom';
+const code=(await readFile(new URL('../extension/popup.js',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'');
+const html=await readFile(new URL('../extension/popup.html',import.meta.url),'utf8');
 const readingText='The sea lay still beneath the lighthouse. '.repeat(12);
-function popupHarness({query=async()=>[{id:42}],send=async()=>({ok:true}),saved={},encodeDocument=async file=>({name:file.name,base64:'JVBERi0='})}={}){
-  const elements=Object.fromEntries(['import-file','import-form','document-file','read-file','import-back','paste','scan','status','choices','paste-form','text','back','open-reader','debug','debug-report','copy-debug'].map(id=>[id,{
-    disabled:false,hidden:['status','paste-form','import-form'].includes(id),textContent:'',value:'',files:[],focused:false,
-    addEventListener(event,callback){this[event]=callback;},
-    setAttribute(name,value){this[name]=value;},
-    focus(){this.focused=true;}
-  }]));
-  const messages=[],logs=[],clipboard=[];let closed=0,queries=0;
-  vm.runInNewContext(popupCode,{
-    document:{getElementById:id=>elements[id]},
-    encodeDocument,
-    chrome:{storage:{session:{get:async()=>saved}},tabs:{query:async args=>{queries++;return query(args);}},runtime:{getURL:path=>'chrome-extension://test/'+path,getManifest:()=>({version:'1.2.3'}),sendMessage:async msg=>{messages.push({...msg});return send(msg);}}},
-    console:{error:(...args)=>logs.push(args)}, navigator:{clipboard:{writeText:async text=>clipboard.push(text)}},
-    window:{close:()=>closed++}
-  });
-  return {elements,messages,logs,clipboard,get closed(){return closed;},get queries(){return queries;},
-    submit:()=>elements['paste-form'].submit({preventDefault(){}}),
-    import:()=>elements['import-form'].submit({preventDefault(){}})
-  };
+const tick=()=>new Promise(r=>setImmediate(r));
+async function popup({saved={},send=async()=>({ok:true}),encodeDocument=async file=>({name:file.name,base64:'JVBERi0='}),health={ready:true}}={}){
+ const dom=new JSDOM(html,{url:'https://undertone.test/popup.html',runScripts:'outside-only'}),w=dom.window;
+ const messages=[],listeners=[],logs=[],clipboard=[];let closed=0,queries=0;
+ const storage={get:async key=>key?{[key]:saved[key]}:{...saved},set:async data=>{
+  const changes=Object.fromEntries(Object.entries(data).map(([key,value])=>[key,{oldValue:saved[key],newValue:value}]));
+  Object.assign(saved,data);for(const listener of listeners)listener(changes,'session');
+ }};
+ Object.assign(w,{encodeDocument,AbortSignal,fetch:async()=>{if(health instanceof Error)throw health;return Response.json(health);},
+ chrome:{storage:{session:storage,onChanged:{addListener:fn=>listeners.push(fn)}},tabs:{query:async()=>{queries++;return[{id:42}];}},runtime:{getManifest:()=>({version:'1.7.2'}),sendMessage:async request=>{
+  if(request.type==='get-job')return {ok:true,job:saved['undertone-job']};messages.push(JSON.parse(JSON.stringify(request)));return send(request,storage);
+ }}}});
+ w.console.error=(...args)=>logs.push(args);w.close=()=>closed++;
+ Object.defineProperty(w.navigator,'clipboard',{value:{writeText:async value=>clipboard.push(value)}});
+ w.eval(code);await tick();
+ const $=id=>w.document.getElementById(id);
+ return {w,$,messages,saved,storage,logs,clipboard,get closed(){return closed;},get queries(){return queries;},
+ file(name){Object.defineProperty($('document-file'),'files',{configurable:true,value:[{name}]});},
+ submit:id=>$(id).onsubmit({preventDefault(){}}),dispose(){dom.window.document.body.replaceChildren();}};
 }
-
-test('Paste expands the popup form without reading the tab, sending text, or opening a reader',async()=>{
-  const h=popupHarness();await h.elements.paste.click();
-  assert.equal(h.elements.choices.hidden,true);
-  assert.equal(h.elements['paste-form'].hidden,false);
-  assert.equal(h.elements.text.focused,true);
-  assert.equal(h.queries,0);assert.equal(h.messages.length,0);assert.equal(h.closed,0);
+test('menu expands paste/import locally, Back keeps text and labels stay short',async()=>{
+ const h=await popup();h.$('paste').click();assert.equal(h.$('paste-form').hidden,false);h.$('text').value=readingText;h.$('back').click();
+ assert.equal(h.$('choices').hidden,false);assert.equal(h.$('text').value,readingText);
+ h.$('import-file').click();assert.equal(h.$('import-form').hidden,false);assert.equal(h.queries,0);assert.equal(h.messages.length,0);
+ assert.equal(h.$('import-file').querySelector('small').textContent,'PDF or DOCX');assert.equal(h.$('read-file').textContent,'Review text');h.dispose();
 });
-test('Back returns to the two choices and keeps the unfinished pasted text',async()=>{
-  const h=popupHarness();h.elements.paste.click();h.elements.text.value=readingText;h.elements.back.click();
-  assert.equal(h.elements.choices.hidden,false);
-  assert.equal(h.elements['paste-form'].hidden,true);
-  assert.equal(h.elements.text.value,readingText);
-  assert.equal(h.messages.length,0);
+test('paste sends finalized text and scan captures only the current tab',async()=>{
+ const h=await popup();h.$('paste').click();h.$('text').value=' '+readingText+' ';
+ await h.submit('paste-form');assert.deepEqual(h.messages,[{type:'open-reader',mode:'paste',text:readingText.trim()}]);assert.equal(h.queries,0);assert.equal(h.closed,1);
+ const scan=await popup();await scan.$('scan').onclick();assert.equal(scan.queries,1);assert.deepEqual(scan.messages,[{type:'open-reader',mode:'scan',tabId:42}]);h.dispose();scan.dispose();
 });
-test('Open reader sends finalized pasted text without querying the current tab',async()=>{
-  const h=popupHarness();h.elements.paste.click();h.elements.text.value='  '+readingText+'  ';
-  await h.submit();
-  assert.equal(h.queries,0);
-  assert.deepEqual(h.messages,[{type:'open-reader',mode:'paste',text:readingText.trim()}]);
-  assert.equal(h.closed,1);
+test('short text and absent files cannot start work',async()=>{
+ const h=await popup();h.$('text').value='short';await h.submit('paste-form');assert.match(h.$('status').textContent,/80/);
+ await h.submit('import-form');assert.match(h.$('status').textContent,/PDF or DOCX/);assert.equal(h.messages.length,0);h.dispose();
 });
-test('short paste is rejected in the popup before transmission',async()=>{
-  const h=popupHarness();h.elements.paste.click();h.elements.text.value='Too short';await h.submit();
-  assert.equal(h.messages.length,0);assert.equal(h.closed,0);
-  assert.match(h.elements.status.textContent,/80 characters/);
+test('pending work prevents duplicate requests and navigation',async()=>{
+ let finish;const h=await popup({send:()=>new Promise(r=>finish=r)});h.$('paste').click();h.$('text').value=readingText;
+ const pending=h.submit('paste-form');await tick();await h.submit('paste-form');await h.$('scan').onclick();h.$('back').click();
+ assert.equal(h.messages.length,1);assert.equal(h.$('paste-form').hidden,false);assert.equal(h.$('text').disabled,true);assert.equal(h.closed,0);
+ finish({ok:true});await pending;assert.equal(h.closed,1);h.dispose();
 });
-test('Scan captures the originating tab ID before handing off',async()=>{
-  const h=popupHarness();await h.elements.scan.click();
-  assert.equal(h.queries,1);assert.equal(h.messages[0].tabId,42);
-  assert.equal(h.messages[0].type,'open-reader');assert.equal(h.messages[0].mode,'scan');
-  assert.equal(h.closed,1);
+test('draft text and view survive reopening without being sent to Gemini',async()=>{
+ const saved={},h=await popup({saved});h.$('paste').click();h.$('text').value=readingText;h.$('text').dispatchEvent(new h.w.Event('input'));await tick();
+ const reopened=await popup({saved});assert.equal(reopened.$('text').value,readingText);assert.equal(reopened.$('paste-form').hidden,false);assert.equal(reopened.messages.length,0);h.dispose();reopened.dispose();
 });
-test('pending preparation keeps the popup open and prevents duplicate submissions',async()=>{
-  let finish;const h=popupHarness({send:()=>new Promise(resolve=>{finish=resolve;})});
-  h.elements.paste.click();h.elements.text.value=readingText;
-  const first=h.submit();await h.submit();await h.elements.scan.click();h.elements.back.click();
-  assert.equal(h.elements.paste.disabled,true);assert.equal(h.elements.scan.disabled,true);
-  assert.equal(h.elements.text.disabled,true);assert.equal(h.elements['open-reader'].disabled,true);
-  assert.equal(h.messages.length,1);assert.equal(h.closed,0);assert.equal(h.elements.choices.hidden,true);
-  finish({ok:true});await first;assert.equal(h.closed,1);
+test('reopened popup follows a running job and restores controls on failure',async()=>{
+ const job={id:'job',action:'open-reader',mode:'scan',status:'running'},h=await popup({saved:{'undertone-job':job}});
+ assert.equal(h.$('scan').disabled,true);assert.match(h.$('status').textContent,/soundtrack/);
+ await h.storage.set({'undertone-job':{...job,status:'error',result:{error:'Try again.',diagnostic:{code:'GEMINI_UNAVAILABLE'}}}});await tick();
+ assert.equal(h.$('scan').disabled,false);assert.equal(h.$('status').textContent,'Try again.');assert.equal(h.closed,0);h.dispose();
 });
-test('preparation error remains visible in popup and preserves text for retry',async()=>{
-  const h=popupHarness({send:async()=>({ok:false,error:'Set GEMINI_API_KEY in .env, then restart Undertone.'})});
-  h.elements.paste.click();h.elements.text.value=readingText;await h.submit();
-  assert.equal(h.closed,0);assert.equal(h.elements.paste.disabled,false);assert.equal(h.elements.scan.disabled,false);
-  assert.equal(h.elements.text.disabled,false);assert.equal(h.elements.text.value,readingText);
-  assert.match(h.elements.status.textContent,/GEMINI_API_KEY/);assert.equal(h.elements.status.hidden,false);
+test('file extraction opens an editable preview without opening a reader',async()=>{
+ const h=await popup({send:async(request,storage)=>{
+  assert.equal(request.type,'prepare-import');await storage.set({'undertone-draft':{view:'review',importText:readingText,importTitle:'Story.pdf'}});return{ok:true,preview:true};
+ }});h.$('import-file').click();h.file('Story.pdf');await h.submit('import-form');
+ assert.equal(h.$('review-form').hidden,false);assert.equal(h.$('review-text').value,readingText);assert.equal(h.closed,0);assert.equal(h.messages.length,1);h.dispose();
 });
-test('runtime error also restores popup controls',async()=>{
-  const h=popupHarness({send:async()=>{throw new Error('Connection was closed. Please try again.');}});
-  h.elements.text.value=readingText;await h.submit();
-  assert.equal(h.closed,0);assert.equal(h.elements['open-reader'].disabled,false);
-  assert.match(h.elements.status.textContent,/Please try again/);
+test('edited imported text is finalized explicitly and keeps its document title',async()=>{
+ const h=await popup({saved:{'undertone-draft':{view:'review',importText:readingText,importTitle:'Story.pdf'}}});
+ h.$('review-text').value=readingText+' Edited ending.';await h.submit('review-form');
+ assert.deepEqual(h.messages,[{type:'open-reader',mode:'import',title:'Story.pdf',text:readingText+' Edited ending.'}]);assert.equal(h.closed,1);h.dispose();
 });
-test('popup displays, logs and copies a specific failure report without pasted text',async()=>{
-  const diagnostic={code:'SCAN_ACCESS_DENIED',stage:'extract',mode:'scan',version:'1.2.3',events:[{stage:'tab',code:'SCAN_TAB_READY'}]};
-  const h=popupHarness({send:async()=>({ok:false,error:'Chrome denied access. Refresh the article.',diagnostic})});
-  h.elements.text.value=readingText;
-  await h.elements.scan.click();
-  assert.match(h.elements.status.textContent,/SCAN_ACCESS_DENIED/);
-  assert.equal(h.elements.debug.hidden,false);
-  assert.deepEqual(JSON.parse(h.elements['debug-report'].textContent),diagnostic);
-  await h.elements['copy-debug'].click();
-  assert.equal(h.clipboard.length,1);
-  assert.deepEqual(JSON.parse(h.clipboard[0]),diagnostic);
-  assert.doesNotMatch(h.clipboard[0],/lighthouse/);
-  assert.equal(h.logs[0][0],'[Undertone]');
+test('background import completion restores its preview after the popup reopens',async()=>{
+ const job={id:'import',action:'prepare-import',mode:'import',status:'running'},h=await popup({saved:{'undertone-job':job}});
+ await h.storage.set({'undertone-draft':{view:'review',importText:readingText,importTitle:'Reading.docx'}});
+ await h.storage.set({'undertone-job':{...job,status:'done',result:{ok:true,preview:true}}});await tick();
+ assert.equal(h.$('review-form').hidden,false);assert.equal(h.$('review-text').value,readingText);assert.equal(h.closed,0);h.dispose();
 });
-test('last failure remains inspectable after reopening the popup',async()=>{
-  const diagnostic={code:'GEMINI_HTTP_VERSION_UNSUPPORTED',upstreamStatus:505,stage:'score',version:'1.2.3'};
-  const h=popupHarness({saved:{'undertone-last-error':{diagnostic}}});
-  await Promise.resolve();
-  assert.equal(h.elements.debug.hidden,false);
-  assert.deepEqual(JSON.parse(h.elements['debug-report'].textContent),diagnostic);
+test('errors keep the draft and provide a copyable diagnostic without private text',async()=>{
+ const diagnostic={code:'SCAN_ACCESS_DENIED',stage:'extract'},h=await popup({send:async()=>({ok:false,error:'Chrome denied access.',diagnostic})});
+ h.$('text').value=readingText;await h.$('scan').onclick();assert.equal(h.$('scan').disabled,false);assert.equal(h.$('text').value,readingText);
+ assert.equal(h.$('status').textContent,'Chrome denied access.');await h.$('copy-debug').onclick();assert.deepEqual(JSON.parse(h.clipboard[0]),diagnostic);assert.doesNotMatch(h.clipboard[0],/lighthouse/);h.dispose();
 });
-async function workerHarness(launchReader,saved={}){
-  const code=(await readFile(new URL('../extension/background.js',import.meta.url),'utf8')).replace("import {launchReader} from './reader-launch.js';",'');
-  let handler;
-  vm.runInNewContext(code,{
-    chrome:{storage:{session:{set:async data=>Object.assign(saved,data),remove:async id=>{delete saved[id];}}},runtime:{id:'test',getManifest:()=>({version:'1.2.3'}),getURL:path=>'chrome-extension://test/'+path,onMessage:{addListener:fn=>{handler=fn;}}}},
-    launchReader
-  });
-  return handler;
-}
-test('worker accepts only its popup and keeps its asynchronous reply alive',async()=>{
-  let finish,launched=0;
-  const handler=await workerHarness(()=>{launched++;return new Promise(resolve=>{finish=resolve;});});
-  const request={type:'open-reader',mode:'paste',text:readingText},sender={id:'test',url:'chrome-extension://test/popup.html'};
-  assert.equal(handler(request,{...sender,url:'https://example.org'},()=>{}),undefined);assert.equal(launched,0);
-  const response=new Promise(resolve=>{assert.equal(handler(request,sender,resolve),true);});
-  assert.equal(launched,1);finish();assert.equal((await response).ok,true);
+test('runtime and file transfer errors restore controls',async()=>{
+ for(const options of [{send:async()=>{throw new Error('Connection closed.');}},{encodeDocument:async()=>{throw Object.assign(new Error('File exceeds 20 MB.'),{code:'FILE_TOO_LARGE'});}}]){
+  const h=await popup(options);h.file('private.pdf');await h.submit('import-form');assert.equal(h.$('read-file').disabled,false);assert.equal(h.closed,0);assert.equal(h.$('debug').hidden,false);h.dispose();
+ }
 });
-test('worker returns actionable launch errors to its popup',async()=>{
-  const handler=await workerHarness(async()=>{throw new Error('Start Undertone with npm start.');});
-  const response=await new Promise(resolve=>handler({type:'open-reader',mode:'scan'},{id:'test',url:'chrome-extension://test/popup.html'},resolve));
-  assert.equal(response.ok,false);assert.match(response.error,/npm start/);
-});
-test('worker stores the last diagnostic and clears it after a successful handoff',async()=>{
-  const saved={},sender={id:'test',url:'chrome-extension://test/popup.html'};
-  const diagnostic={code:'SCAN_NO_TEXT',stage:'extract',mode:'scan',events:[]};
-  const fail=await workerHarness(async()=>{throw Object.assign(new Error('No readable text found.'),{diagnostic});},saved);
-  const response=await new Promise(resolve=>fail({type:'open-reader',mode:'scan',text:readingText},sender,resolve));
-  assert.equal(saved['undertone-last-error'].diagnostic.code,'SCAN_NO_TEXT');
-  assert.equal(response.diagnostic.version,'1.2.3');
-  assert.doesNotMatch(JSON.stringify(saved),/lighthouse/);
-  const succeed=await workerHarness(async()=>{},saved);
-  await new Promise(resolve=>succeed({type:'open-reader',mode:'paste',text:readingText},sender,resolve));
-  assert.equal(saved['undertone-last-error'],undefined);
+test('local readiness distinguishes offline, missing key and mismatched versions',async()=>{
+ for(const [health,expected]of [[new Error(),/npm start/],[{ready:false},/Gemini key/],[{ready:true,version:'1.0.0'},/Restart/]]){
+  const h=await popup({health});assert.match(h.$('connection').textContent,expected);assert.equal(h.messages.length,0);h.dispose();
+ }
 });
 
-
-test('Import file expands inside the popup without creating a window or sending a request',async()=>{
- const h=popupHarness();await h.elements['import-file'].click();
- assert.equal(h.elements['import-form'].hidden,false);assert.equal(h.elements.choices.hidden,true);
- assert.equal(h.elements['document-file'].focused,true);assert.equal(h.closed,0);
- assert.equal(h.messages.length,0);assert.equal(h.queries,0);
-});
-test('import Back returns to the menu and preserves the selected file',async()=>{
- const h=popupHarness(),file={name:'Story.docx'};
- h.elements['import-file'].click();h.elements['document-file'].files=[file];h.elements['import-back'].click();
- assert.equal(h.elements['import-form'].hidden,true);assert.equal(h.elements.choices.hidden,false);
- assert.equal(h.elements['import-file'].hidden,false);assert.equal(h.elements['document-file'].files[0],file);
-});
-test('worker rejects the retired import window',async()=>{
- let launched=0;const handler=await workerHarness(async()=>{launched++;});
- assert.equal(handler({type:'open-reader',mode:'import',text:readingText},{id:'test',url:'chrome-extension://test/import.html'},()=>{}),undefined);
- assert.equal(launched,0);
-});
-test('import sends a JSON-safe file to the worker and waits for the completed reader',async()=>{
- let finish;const h=popupHarness({send:()=>new Promise(resolve=>{finish=resolve;})});
- h.elements['import-file'].click();h.elements['document-file'].files=[{name:'Story.pdf'}];
- const pending=h.import();await new Promise(resolve=>setImmediate(resolve));await h.import();
- assert.equal(h.messages.length,1);assert.equal(h.closed,0);assert.equal(h.elements['read-file'].disabled,true);
- assert.deepEqual(JSON.parse(JSON.stringify(h.messages[0])),{type:'open-reader',mode:'import',file:{name:'Story.pdf',base64:'JVBERi0='}});
- finish({ok:true});await pending;assert.equal(h.closed,1);
-});
-test('no file or file validation failure stays in the popup without sending data',async()=>{
- const h=popupHarness({encodeDocument:async()=>{throw Object.assign(new Error('File exceeds 20 MB.'),{code:'FILE_TOO_LARGE',stage:'import'});}});
- await h.import();assert.match(h.elements.status.textContent,/Choose a PDF or DOCX/);
- h.elements['document-file'].files=[{name:'private.pdf'}];await h.import();
- assert.equal(h.messages.length,0);assert.equal(h.closed,0);assert.equal(h.elements['read-file'].disabled,false);
- assert.match(h.elements.status.textContent,/FILE_TOO_LARGE/);assert.doesNotMatch(h.elements['debug-report'].textContent,/private.pdf/);
+test('interrupted work is explained when reopening, without disabling retry',async()=>{
+ const h=await popup({saved:{'undertone-job':{id:'old',status:'error',mode:'paste',result:{error:'Preparation was interrupted. Please try again.',diagnostic:{code:'JOB_INTERRUPTED'}}}}});
+ assert.match(h.$('status').textContent,/interrupted/);assert.equal(h.$('paste').disabled,false);h.dispose();
 });

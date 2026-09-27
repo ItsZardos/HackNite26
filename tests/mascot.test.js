@@ -13,3 +13,14 @@ test('mascot respects reduced motion and remembers an explicit pause',()=>{
  preference.matches=true;change();button.click();assert.equal(w.document.body.dataset.mascotPaused,'true');
  assert.match(button.getAttribute('aria-label'),/reduced motion/);w.close();
 });
+
+test('greeting ends, pause synchronizes across tabs, and hidden pages pause animation',async()=>{
+ const dom=new JSDOM('<button class="mascot-toggle"></button>',{url:'https://undertone.test',runScripts:'outside-only',pretendToBeVisual:true}),w=dom.window;
+ w.matchMedia=()=>({matches:false,addEventListener(){}});let finish;
+ w.setTimeout=fn=>{finish=fn;return 1;};w.clearTimeout=()=>{};
+ w.eval(code);const button=w.document.querySelector('button');button.dispatchEvent(new w.Event('pointerenter'));
+ assert.equal(w.document.body.dataset.mascotGreeting,'true');finish();assert.equal(w.document.body.dataset.mascotGreeting,undefined);
+ w.dispatchEvent(new w.StorageEvent('storage',{key:'undertone-mascot-paused',newValue:'true'}));assert.equal(w.document.body.dataset.mascotPaused,'true');
+ button.dispatchEvent(new w.Event('pointerenter'));assert.equal(w.document.body.dataset.mascotGreeting,undefined);
+ Object.defineProperty(w.document,'hidden',{value:true});w.document.dispatchEvent(new w.Event('visibilitychange'));assert.equal(w.document.body.dataset.mascotHidden,'true');w.close();
+});

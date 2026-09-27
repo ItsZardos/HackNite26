@@ -60,7 +60,9 @@ Click the monkey in your toolbar to begin. There's no separate website to open.
 | --- | --- |
 | **Paste text** | Paste your passage, then choose **Open reader**. |
 | **Scan page** | Extract the article from the current tab. Navigation and other page clutter are filtered out. |
-| **Import file** | Choose a PDF or DOCX inside the popup, then choose **Open reader**. |
+| **Import file** | Choose a PDF or DOCX, review the extracted text, then choose **Open reader**. |
+
+Drafts stay in the popup for the current browser session. If you close the menu while a file or soundtrack is being prepared, reopen it to see the progress.
 
 Once your text is ready, Undertone opens the reader. Press **Play** and scroll at your own pace. Each scroll settles on one page of text, so the soundtrack belongs to the passage you can actually see. Long passages span several pages without switching music. Pages adjust to your window, and a small counter keeps your place. You can also use the arrow keys or Page Up and Page Down. Playback and volume controls stay in a small bar at the bottom. Click **New text** to reopen the extension menu.
 

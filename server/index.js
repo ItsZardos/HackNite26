@@ -1,3 +1,5 @@
+import {readFileSync} from 'node:fs';
+const appVersion=JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8')).version;
 import http from 'node:http';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
@@ -30,7 +32,7 @@ const server=http.createServer(async(req,res)=>{
  const json=(status,obj)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(obj));};
  try {
   const url=new URL(req.url,local);
-  if(url.pathname==='/api/health'){json(200,{ready:Boolean(process.env.GEMINI_API_KEY)});return;}
+  if(url.pathname==='/api/health'){json(200,{ready:Boolean(process.env.GEMINI_API_KEY),version:appVersion});return;}
   if(['/api/pdf-text','/api/docx-text'].includes(url.pathname)&&req.method==='POST'){
    const docx=url.pathname==='/api/docx-text',prefix=docx?'DOCX':'PDF';
    const contentType=docx?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':'application/pdf';

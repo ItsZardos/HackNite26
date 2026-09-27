@@ -25,10 +25,18 @@ export function extractArticle() {
       if (node.matches('script,style,noscript,template,input,textarea,select,button,[hidden],[aria-hidden="true"],[contenteditable]:not([contenteditable="false"])') || style.display === 'none' || style.visibility === 'hidden') cloned[i]?.remove();
     }
     function plainText(root) {
-      let text = '';
+      const parts = [];
+      let length = 0, pending = '';
+      // Normalize only the new fragment, retaining trailing whitespace until
+      // the next fragment. Large pages must not rescan the entire string per node.
       const append = value => {
-        text = (text + value).replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n').replace(/\n{3,}/g, '\n\n');
-        if (text.trim().length > 100000) throw Object.assign(new Error(), {code:'SCAN_TEXT_TOO_LONG'});
+        let next = (pending + value).replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n').replace(/\n{3,}/g, '\n\n');
+        if (!length) next = next.trimStart();
+        pending = next.match(/\s*$/u)[0];
+        const body = next.slice(0, next.length - pending.length);
+        length += body.length;
+        if (length > 100000) throw Object.assign(new Error(), {code:'SCAN_TEXT_TOO_LONG'});
+        if (body) parts.push(body);
       };
       const blocks = /^(ADDRESS|ARTICLE|ASIDE|BLOCKQUOTE|BR|DIV|H[1-6]|HEADER|HR|LI|MAIN|P|PRE|SECTION|TR)$/;
       const stack = [root];
@@ -42,7 +50,7 @@ export function extractArticle() {
           stack.push(...Array.from(node.childNodes).reverse());
         }
       }
-      return text.trim();
+      return parts.join('');
     }
     let parsed, text = '', method = 'readability';
     if (typeof Readability === 'function') {
@@ -162,7 +170,7 @@ async function pruneReaders(api) {
   if (readers.length > 10) await api.storage.session.remove(readers.slice(0, readers.length - 10).map(([id]) => id));
 }
 
-export async function launchReader({mode, tabId, text, file}, api = chrome, createId = () => crypto.randomUUID(), fetcher = fetch) {
+export async function launchReader({mode, tabId, text, file, title}, api = chrome, createId = () => crypto.randomUUID(), fetcher = fetch) {
   // Own extraction and scoring here, so a submitted import survives popup close.
   const keepAlive = typeof api.runtime.getPlatformInfo === 'function' ? setInterval(() => {
     Promise.resolve().then(() => api.runtime.getPlatformInfo()).catch(() => {});
@@ -184,7 +192,7 @@ export async function launchReader({mode, tabId, text, file}, api = chrome, crea
     if(mode==='scan')article=await readPage(tabId,api,trace,fetcher);
     else if(mode==='import'){
       trace('import','FILE_READING');
-      article=await readTransferredDocument(file,fetcher);
+      article=typeof text==='string'&&!file ? {text:text.trim(),title:typeof title==='string'?title.slice(0,300):'Document',author:'',kind:'document'} : await readTransferredDocument(file,fetcher);
       trace('import','FILE_TEXT_READY',{characters:article.text.length});
     }else article={text:typeof text==='string'?text.trim():'',title:'Reading selection',author:''};
     if (article.text.length < 80) throw failure('INPUT_TOO_SHORT', 'input', 'Please provide at least 80 characters of reading text.');
