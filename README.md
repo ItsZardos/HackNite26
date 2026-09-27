@@ -62,7 +62,7 @@ Click the monkey in your toolbar to begin. There's no separate website to open.
 | **Scan page** | Extract the article from the current tab. Navigation and other page clutter are filtered out. |
 | **Import file** | Choose a PDF or DOCX inside the popup, then choose **Open reader**. |
 
-Once your text is ready, Undertone opens the reader. Press **Play** and scroll at your own pace. The music follows your position after you pause scrolling, so it won't jump through tracks while you skim. Playback and volume controls stay in a small bar at the bottom. Click **New text** to reopen the extension menu.
+Once your text is ready, Undertone opens the reader. Press **Play** and scroll at your own pace. Each scroll settles on one page of text, so the soundtrack belongs to the passage you can actually see. Long passages span several pages without switching music. Pages adjust to your window, and a small counter keeps your place. You can also use the arrow keys or Page Up and Page Down. Playback and volume controls stay in a small bar at the bottom. Click **New text** to reopen the extension menu.
 
 ## How the music is made
 

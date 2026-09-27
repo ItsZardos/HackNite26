@@ -1,7 +1,7 @@
 import {AudioEngine} from './audio.js';
-import {sectionAtFocus} from './reading-position.js';
+import {paginateSections,pageAtScroll} from './reading-position.js';
 const $=id=>document.getElementById(id),audio=new AudioEngine();
-let score,current=-1,settleTimer,fadeTimer,soundToken=0,playToken=0,starting=false;
+let score,current=-1,currentPage=-1,pages=[],settleTimer,resizeTimer,fadeTimer,soundToken=0,playToken=0,starting=false;
 function message(text){$('message').textContent=text;$('message').hidden=!text;}
 function status(text){$('play-status').textContent=text;}
 audio.onTrackChange=({track,fallback})=>{ $('mood').title=fallback?'Bundled WAV fallback':track?`${track.title} · Original CC0 composition`: 'Original CC0 music'; };
@@ -41,37 +41,71 @@ function setCurrent(index){
  changeSoundtrack(section);
 }
 function track(){
- clearTimeout(settleTimer);if(!score)return;
- // The upper third approximates the reader's eye line. The soundtrack waits for
- // scrolling to settle, then holds through small movements near the boundary.
- const bottom=Math.max(0,innerHeight-$('player').getBoundingClientRect().height);
- const focus=Math.max(48,bottom*.36);
- const bounds=[...$('sections').children].map(element=>element.getBoundingClientRect());
- const remaining=document.documentElement.scrollHeight-innerHeight-scrollY;
- const atEnd=scrollY>0&&remaining<=(current===bounds.length-1?72:2);
- setCurrent(atEnd?bounds.length-1:sectionAtFocus(bounds,focus,current));
+ clearTimeout(settleTimer);if(!score||!pages.length)return;
+ const viewport=$('sections'),height=pageHeight();
+ const index=pageAtScroll(viewport.scrollTop,height,pages.length);
+ // Only commit a fully landed page. Two passages passing through the viewport
+ // during a scroll gesture must not fight over the soundtrack.
+ if(index<0||Math.abs(viewport.scrollTop-index*height)>3)return;
+ currentPage=index;
+ [...viewport.children].forEach((page,i)=>{page.inert=i!==index;page.setAttribute('aria-hidden',String(i!==index));});
+ $('page-progress').textContent=`${index+1} / ${pages.length}`;
+ $('page-progress').setAttribute('aria-label',`Page ${index+1} of ${pages.length}`);
+ $('reading-hint').textContent=pages.length===1?'Your reading':index===pages.length-1?'End of reading':'Scroll to continue';
+ setCurrent(pages[index].sectionIndex);
 }
-function scheduleTrack(){clearTimeout(settleTimer);settleTimer=setTimeout(track,260);}
-addEventListener('scroll',scheduleTrack,{passive:true});
-// Use the same short dwell on scrollend: tiny separate wheel gestures shouldn't
-// repeatedly switch between moods. Native keyboard, touch and Find remain intact.
-addEventListener('scrollend',scheduleTrack);
-addEventListener('resize',scheduleTrack);
+function pageHeight(){return $('sections').firstElementChild?.getBoundingClientRect().height||$('sections').clientHeight;}
+function scheduleTrack(){clearTimeout(settleTimer);settleTimer=setTimeout(track,100);}
+$('sections').addEventListener('scroll',scheduleTrack,{passive:true});
+$('sections').addEventListener('scrollend',scheduleTrack);
+function fillText(element,text){
+ element.replaceChildren(...text.split(/\n\s*\n/).filter(part=>part.trim()).map(part=>{
+  const paragraph=document.createElement('p');paragraph.textContent=part;return paragraph;
+ }));
+}
+function layout(){
+ if(!score)return;
+ const viewport=$('sections'),anchor=pages[currentPage],height=viewport.clientHeight;
+ if(!height)return;
+ const measure=document.createElement('div');measure.className='reader-page page-measure';measure.setAttribute('aria-hidden','true');measure.inert=true;
+ const prose=document.createElement('div');prose.className='page-prose';measure.append(prose);viewport.append(measure);
+ const fits=text=>{fillText(prose,text);return prose.scrollHeight<=measure.clientHeight-48;};
+ pages=paginateSections(score.sections,fits);measure.remove();
+ const elements=pages.map((page,index)=>{
+  const sheet=document.createElement('section');sheet.className='reader-page';sheet.dataset.section=String(page.sectionIndex);
+  sheet.setAttribute('aria-label',`Page ${index+1}`);
+  const content=document.createElement('div');content.className='page-prose';fillText(content,page.text);sheet.append(content);
+  if(page.text.trim().split(/\s+/).length<120)sheet.classList.add('short-page');
+  return sheet;
+ });
+ viewport.replaceChildren(...elements);
+ // Larger type gives short passages presence, but must never clip the words.
+ elements.forEach(sheet=>{if(sheet.firstChild.scrollHeight>height-48)sheet.classList.remove('short-page');});
+ currentPage=anchor?pages.findIndex(page=>page.sectionIndex===anchor.sectionIndex&&page.start<=anchor.start&&page.end>anchor.start):0;
+ if(currentPage<0)currentPage=0;
+ viewport.scrollTop=currentPage*pageHeight();track();
+}
+function scheduleLayout(){clearTimeout(resizeTimer);resizeTimer=setTimeout(layout,140);}
+addEventListener('resize',scheduleLayout);
+if(typeof ResizeObserver==='function')new ResizeObserver(scheduleLayout).observe($('sections'));
+addEventListener('keydown',event=>{
+ if(!score||event.ctrlKey||event.metaKey||event.altKey||event.target.closest('button,input,textarea,select,[contenteditable=true]'))return;
+ const delta={ArrowDown:1,ArrowUp:-1,PageDown:1,PageUp:-1,' ':event.shiftKey?-1:1}[event.key];
+ if(delta===undefined&&event.key!=='Home'&&event.key!=='End')return;
+ event.preventDefault();
+ const viewport=$('sections'),height=pageHeight(),from=pageAtScroll(viewport.scrollTop,height,pages.length);
+ const to=event.key==='Home'?0:event.key==='End'?pages.length-1:Math.max(0,Math.min(pages.length-1,from+delta));
+ viewport.scrollTo({top:to*height,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
+});
 function render(data,meta={}){
  stop();score=data;current=-1;
  $('welcome').hidden=true;$('reading').hidden=false;$('player').hidden=false;$('exit').hidden=false;
- $('article-title').textContent=meta.title||data.title||'Untitled';
+ $('article-title').textContent=meta.title||data.title||'Untitled';$('article-title').title=$('article-title').textContent;
  $('byline').textContent=`${meta.author||data.author||'Your reading selection'} · ${Math.max(1,Math.ceil(data.sections.reduce((n,s)=>n+s.text.split(/\s+/).length,0)/220))} min read`;
- $('sections').replaceChildren(...data.sections.map((section,index)=>{
-  const group=document.createElement('div');group.className='score-section';group.dataset.section=String(index);
-  for(const text of section.text.split(/\n\s*\n/)){
-   if(!text.trim())continue;
-   const p=document.createElement('p');p.textContent=text;group.append(p);
-  }
-  return group;
- }));
- setCurrent(0);message('');status('Press play for background music');
- document.fonts?.ready.then(scheduleTrack);
+ pages=[];currentPage=-1;layout();
+ message('');status('Press play for background music');
+ document.fonts?.ready.then(scheduleLayout);
+ $('sections').focus({preventScroll:true});
 }
 $('play').onclick=async()=>{
  if(starting||audio.playing){stop();return;}
@@ -94,4 +128,4 @@ if(articleId&&location.protocol==='chrome-extension:'){
   if(!article?.score?.sections?.length)throw new Error('Missing reading session.');render(article.score,article);
  }catch{showEmpty('Text unavailable.','Open Undertone from your browser toolbar and prepare the text again.');}
 }else showEmpty();
-addEventListener('pagehide',()=>{clearTimeout(settleTimer);stop();});
+addEventListener('pagehide',()=>{clearTimeout(settleTimer);clearTimeout(resizeTimer);stop();});
