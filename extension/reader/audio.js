@@ -1,7 +1,10 @@
+import {selectTrack} from '../public/music/catalog.js';
+import {MusicLibrary} from './music-library.js';
 export class AudioEngine {
  constructor() {
   this.buffers = new Map(); this.voices = new Map();
   this.playing = false; this.volume = .35; this.mood = 'calm'; this.intensity = .3;
+  this.recent = []; this.rotationCount = 0; this.scene = null; this.track = null;
   this.playToken = 0; this.generation = 0; this.activeMood = null; this.activeIntensity = null;
  }
 
@@ -19,7 +22,17 @@ export class AudioEngine {
   }
  }
 
- async buffer(mood) {
+ async buffer(mood, track = null) {
+  if (track) {
+   if (!this.buffers.has(track.id)) {
+    this.library ||= new MusicLibrary(this.context);
+    this.buffers.set(track.id, this.library.render(track).then(buffer => ({buffer,fallback:false})).catch(async () => ({buffer:await this.buffer(mood),fallback:true})).catch(error => {this.buffers.delete(track.id);throw error;}));
+   }
+   const result=await this.buffers.get(track.id);
+   // Voices retain their own AudioBuffers. Bound the decoded cache separately.
+   while(this.buffers.size>4){const oldest=this.buffers.keys().next().value;this.buffers.delete(oldest);}
+   return result;
+  }
   if (!this.buffers.has(mood)) {
    const url = new URL(`../public/music/${mood}.wav`, import.meta.url);
    this.buffers.set(mood, (async () => {
@@ -35,6 +48,29 @@ export class AudioEngine {
   return this.buffers.get(mood);
  }
 
+ async setScene(section) {
+  const signature=item=>JSON.stringify([item?.mood,item?.secondaryMood,item?.sceneProfile,item?.texture,...['energy','brightness','tension'].map(key=>Math.round((item?.[key]??.3)*4))]);
+  const same=signature(section)===signature(this.scene);
+  this.scene=section;
+  if(!same||!this.track)this.track=selectTrack(section,{recent:this.recent,salt:this.rotationCount});
+  return this.setMood(section.mood,section.intensity,this.track);
+ }
+ preloadScene(section){
+  if(!this.context||!this.playing)return Promise.resolve();
+  const track=selectTrack(section,{recent:this.recent,salt:this.rotationCount});
+  return this.buffer(section.mood,track).catch(()=>{});
+ }
+ scheduleRotation(){
+  clearTimeout(this.rotation);this.rotation=null;
+  if(!this.scene||!this.track||!this.playing)return;
+  this.rotation=setTimeout(()=>{
+   this.rotation=null;
+   if(!this.playing)return;
+   this.track=selectTrack(this.scene,{recent:this.recent,salt:++this.rotationCount});
+   this.setMood(this.scene.mood,this.scene.intensity,this.track).catch(()=>this.scheduleRotation());
+  },44800);
+ }
+
  preload(mood) {
   // Download the upcoming mood only after the listener has started audio.
   if (!this.context || !this.playing) return Promise.resolve();
@@ -46,13 +82,13 @@ export class AudioEngine {
   await this.prepare();
   if (token !== this.playToken) return;
   this.playing = true;
-  try { await this.setMood(this.mood, this.intensity); }
+  try { await this.setMood(this.mood, this.intensity, this.track); }
   catch (error) { if (token === this.playToken) this.pause(); throw error; }
  }
 
  pause() {
   this.playToken++; this.generation++; this.playing = false;
-  clearTimeout(this.cleanup);
+  clearTimeout(this.cleanup); clearTimeout(this.rotation); this.rotation=null;
   for (const voice of this.voices.values()) {
    this.fade(voice, 0, this.context.currentTime, .12);
    setTimeout(() => this.removeVoice(voice), 140);
@@ -85,31 +121,38 @@ export class AudioEngine {
   voice.fade = {from: held, to: target, start: now, duration};
  }
 
- async setMood(mood, intensity) {
+ async setMood(mood, intensity, track = null) {
+  const key=track?.id||mood;
   this.mood = mood; this.intensity = intensity;
   if (!this.playing) return;
   const generation = ++this.generation;
-  if (this.activeMood === mood && this.activeIntensity === intensity) return {duration: 0};
-  let buffer;
-  try { buffer = await this.buffer(mood); }
+  if (this.activeMood === key && this.activeIntensity === intensity) {
+   if(!this.rotation)this.scheduleRotation();
+   return {duration: 0};
+  }
+  clearTimeout(this.rotation);this.rotation=null;
+  let buffer, fallback=false;
+  try { const loaded=await this.buffer(mood,track);buffer=track?loaded.buffer:loaded;fallback=track?loaded.fallback:false; }
   catch (error) { if (this.playing && generation === this.generation) throw error; return; }
   if (!this.playing || generation !== this.generation) return;
   const now = this.context.currentTime;
   const duration = this.voices.size ? 3.2 : .25;
-  if (!this.voices.has(mood)) {
+  if (!this.voices.has(key)) {
    const source = this.context.createBufferSource(), gain = this.context.createGain();
    source.buffer = buffer; source.loop = true; gain.gain.value = 0;
    source.connect(gain).connect(this.master); source.start(0, now % buffer.duration);
-   this.voices.set(mood, {source, gain});
+   this.voices.set(key, {source, gain});
   }
-  for (const [key, voice] of this.voices) this.fade(voice, key === mood ? .68 + .07 * intensity : 0, now, duration);
-  this.activeMood = mood; this.activeIntensity = intensity;
+  for (const [voiceKey, voice] of this.voices) this.fade(voice, voiceKey === key ? .68 + .07 * intensity : 0, now, duration);
+  this.activeMood = key; this.activeIntensity = intensity;
   clearTimeout(this.cleanup);
   this.cleanup = setTimeout(() => {
-   for (const [key, voice] of this.voices) {
-    if (key !== mood) { this.removeVoice(voice); this.voices.delete(key); }
+   for (const [voiceKey, voice] of this.voices) {
+    if (voiceKey !== key) { this.removeVoice(voice); this.voices.delete(voiceKey); }
    }
   }, duration * 1000 + 200);
+  if(track){this.recent.push(track.id);this.recent=this.recent.slice(-16);}
+  this.onTrackChange?.({track,fallback});this.scheduleRotation();
   return {duration};
  }
 }

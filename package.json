@@ -1,6 +1,6 @@
 {
   "name": "undertone",
-  "version": "1.5.1",
+  "version": "1.6.0",
   "private": true,
   "type": "module",
   "description": "A cinematic soundtrack for the words you read",
@@ -10,7 +10,8 @@
     "music": "python3 scripts/generate_music.py",
     "build": "node scripts/build.js",
     "setup": "node scripts/setup.js",
-    "doctor": "node scripts/doctor.js"
+    "doctor": "node scripts/doctor.js",
+    "music:export": "node scripts/export-music.js"
   },
   "engines": {
     "node": ">=22.13.0"

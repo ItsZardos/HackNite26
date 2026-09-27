@@ -11,9 +11,9 @@ async function reader({id='',record,play}={}){
  let opened=0,reads=0,offset=0;const w=dom.window,moods=[];w.sectionAtFocus=sectionAtFocus;
  w.AudioEngine=class {
   pause(){this.playing=false;}
-  setMood(mood){moods.push(mood);return Promise.resolve();}
+  setScene(section){moods.push(section.mood);return Promise.resolve();}
   async play(){if(play)await play();else this.playing=true;}
-  preload(){}setVolume(){}
+  preloadScene(){}setVolume(){}
  };
  w.chrome={storage:{session:{get:async()=>{reads++;return record?{[id]:record}:{};}}},action:{openPopup:async()=>{opened++;}}};
  await w.eval(`(async()=>{${code}\n})()`);

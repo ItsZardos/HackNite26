@@ -4,6 +4,7 @@ const $=id=>document.getElementById(id),audio=new AudioEngine();
 let score,current=-1,settleTimer,fadeTimer,soundToken=0,playToken=0,starting=false;
 function message(text){$('message').textContent=text;$('message').hidden=!text;}
 function status(text){$('play-status').textContent=text;}
+audio.onTrackChange=({track,fallback})=>{ $('mood').title=fallback?'Bundled WAV fallback':track?`${track.title} · Original CC0 composition`: 'Original CC0 music'; };
 function updatePlayButton(){
  $('play').dataset.playing=String(audio.playing||starting);
  $('play').setAttribute('aria-label',audio.playing||starting?'Pause soundtrack':'Play soundtrack');
@@ -20,14 +21,14 @@ $('exit').onclick=async()=>{
 };
 function preloadNext(){
  if(!audio.playing)return;
- const next=score.sections.slice(current+1).find(section=>section.mood!==score.sections[current].mood);
- if(next)audio.preload(next.mood);
+ const next=score.sections[current+1];
+ if(next)audio.preloadScene(next);
 }
 async function changeSoundtrack(section){
  const token=++soundToken;clearTimeout(fadeTimer);
  if(audio.playing)status(`Gently moving into ${section.mood}`);
  try{
-  const transition=await audio.setMood(section.mood,section.intensity);
+  const transition=await audio.setScene(section);
   if(token!==soundToken||!audio.playing)return;
   fadeTimer=setTimeout(()=>{if(token===soundToken)status('Playing');},(transition?.duration||0)*1000);
   preloadNext();

@@ -20,3 +20,14 @@ test('long prose sections end at sentence boundaries without losing or moving wo
  assert.deepEqual(chunks.map(c=>c.text).join(' ').split(/\s+/),text.split(/\s+/));
  assert.ok(chunks.every(c=>c.text.split(/\s+/).length<=500));
 });
+
+test('Gemini schema requests blended emotional direction and validates returned catalog fields',async()=>{
+ const section={...item(0),sceneProfile:'bittersweet',secondaryMood:'happy',tension:.3,texture:'felt'},chunks=[{id:0,text:words(100)}];
+ await analyze(chunks,{key:'test',fetcher:async(url,options)=>{
+  const body=JSON.parse(options.body),fields=body.generationConfig.responseJsonSchema.properties.sections.items;
+  for(const field of ['sceneProfile','secondaryMood','tension','texture'])assert.ok(fields.required.includes(field));
+  assert.match(body.systemInstruction.parts[0].text,/quiet-focus/);assert.match(body.systemInstruction.parts[0].text,/Never rewrite/);
+  return {ok:true,json:async()=>({candidates:[{content:{parts:[{text:JSON.stringify({overallTone:'Reflective',sections:[section]})}]}}]})};
+ }});
+ for(const bad of [{sceneProfile:'unknown'},{secondaryMood:'rage'},{tension:2},{texture:'vocals'}])assert.throws(()=>validateAnalysis({overallTone:'Reflective',sections:[{...section,...bad}]},chunks),/soundtrack direction/);
+});
