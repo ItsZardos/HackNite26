@@ -1,4 +1,4 @@
-<img src="assets/undertone-wordmark.svg" alt="undertone. — a score for every story" width="1200">
+<img src="assets/undertone-wordmark.svg" alt="undertone." width="1200">
 
 Undertone gives what you read an instrumental soundtrack. Gemini identifies the mood of each passage, and the music changes as you scroll—from a quiet opening to a tense moment or a hopeful ending.
 
