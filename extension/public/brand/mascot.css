@@ -3,25 +3,26 @@
 .mascot-toggle { display: block; flex: 0 0 auto; width: auto; min-height: 0; margin: 0; padding: 0; border: 0; background: transparent; border-radius: 0; cursor: pointer; }
 .mascot-toggle:hover { background: transparent; }
 .mascot-toggle:focus-visible { outline: 2px solid #896d43; outline-offset: 3px; }
-.mascot { display: block; object-fit: contain; transform-origin: 50% 85%; animation: monkey-idle 9s ease-in-out infinite; }
+.mascot { display: block; object-fit: contain; transform-origin: 50% 85%; animation: monkey-idle 5.8s cubic-bezier(.45,0,.55,1) infinite; }
 
 body[data-preparing=true] .mascot { animation: monkey-listen 1.8s ease-in-out infinite; }
 body:has(#play) .mascot { animation: monkey-reader 14s ease-in-out infinite; }
 body:has(#play[data-playing=true]) .mascot { animation: monkey-listen 4.8s ease-in-out infinite; }
-body[data-mascot-greeting=true] .mascot { animation: monkey-hello 900ms ease-in-out !important; }
+body[data-mascot-greeting=true] .mascot { animation: monkey-hello 1200ms cubic-bezier(.45,0,.55,1) !important; }
 body[data-mascot-hidden=true] .mascot { animation-play-state:paused !important; }
 @keyframes monkey-reader { 0%,75%,100% { transform:none; } 87% { transform:translateY(-1px) rotate(-1deg); } }
 body[data-mascot-paused=true] .mascot { animation: none !important; transform: none !important; }
 @keyframes monkey-idle {
- 0%, 65%, 100% { transform: none; }
- 72% { transform: translateY(-2px) rotate(-3deg); }
- 81% { transform: translateY(1px) rotate(2deg); }
- 90% { transform: translateY(-1px); }
+ 0%, 100% { transform: none; }
+ 20% { transform: translateY(-4px) rotate(-4deg) scale(1.025); }
+ 42% { transform: translateY(-1px) rotate(3deg); }
+ 64% { transform: translateY(-3px) rotate(-2deg) scale(1.015); }
+ 82% { transform: translateY(1px) rotate(2deg); }
 }
 @keyframes monkey-hello {
  0%, 100% { transform: none; }
- 30% { transform: translateY(-3px) rotate(-6deg); }
- 65% { transform: translateY(1px) rotate(4deg); }
+ 30% { transform: translateY(-5px) rotate(-6deg) scale(1.04); }
+ 65% { transform: translateY(-1px) rotate(4deg); }
 }
 @keyframes monkey-listen {
  0%, 100% { transform: rotate(-2deg); }

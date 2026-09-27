@@ -16,7 +16,7 @@ button.addEventListener('click',()=>{
 function greet(){
  if(paused||preference.matches)return;
  clearTimeout(greeting);document.body.dataset.mascotGreeting='true';
- greeting=setTimeout(()=>{delete document.body.dataset.mascotGreeting;},900);
+ greeting=setTimeout(()=>{delete document.body.dataset.mascotGreeting;},1200);
 }
 button.addEventListener('pointerenter',greet);
 button.addEventListener('focus',greet);
@@ -26,3 +26,4 @@ addEventListener('storage',event=>{
 function visibility(){document.body.dataset.mascotHidden=String(document.hidden);}
 document.addEventListener('visibilitychange',visibility);visibility();
 preference.addEventListener('change',update);update();
+if(!document.querySelector('#play'))greet();
