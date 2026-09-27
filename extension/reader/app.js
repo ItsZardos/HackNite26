@@ -9,6 +9,7 @@ function updatePlayButton(){
  $('play').dataset.playing=String(audio.playing||starting);
  $('play').setAttribute('aria-label',audio.playing||starting?'Pause soundtrack':'Play soundtrack');
  $('play').setAttribute('aria-busy',String(starting));
+ $('play').title=audio.playing||starting?'Pause (Space)':'Play (Space)';
 }
 function stop(){
  clearTimeout(fadeTimer);soundToken++;playToken++;starting=false;audio.pause();updatePlayButton();status('Paused');
@@ -89,11 +90,12 @@ function scheduleLayout(){clearTimeout(resizeTimer);resizeTimer=setTimeout(layou
 addEventListener('resize',scheduleLayout);
 if(typeof ResizeObserver==='function')new ResizeObserver(scheduleLayout).observe($('sections'));
 addEventListener('keydown',event=>{
- if(!score||event.ctrlKey||event.metaKey||event.altKey||event.target.closest('input,textarea,select,[contenteditable]:not([contenteditable=false])'))return;
- // Play retains focus after a click. Paging keys still navigate the reading;
- // Space keeps its native button behavior so it can pause/resume playback.
- if(event.key===' '&&event.target.closest('button'))return;
- const delta={ArrowDown:1,ArrowUp:-1,PageDown:1,PageUp:-1,' ':event.shiftKey?-1:1}[event.key];
+ if(!score||event.ctrlKey||event.metaKey||event.altKey||event.isComposing||event.target.closest('input:not([type=range]),textarea,select,[contenteditable]:not([contenteditable=false])'))return;
+ // Space always controls audio, including when another reader button has focus.
+ // Prevent the native button click and held-key repeats from toggling it twice.
+ if(event.key===' '){event.preventDefault();if(!event.repeat)togglePlayback();return;}
+ if(event.target.closest('input'))return;
+ const delta={ArrowDown:1,ArrowUp:-1,PageDown:1,PageUp:-1}[event.key];
  if(delta===undefined&&event.key!=='Home'&&event.key!=='End')return;
  event.preventDefault();
  const viewport=$('sections'),height=pageHeight(),from=pageAtScroll(viewport.scrollTop,height,pages.length);
@@ -106,18 +108,26 @@ function render(data,meta={}){
  $('article-title').textContent=meta.title||data.title||'Untitled';$('article-title').title=$('article-title').textContent;
  $('byline').textContent=`${meta.author||data.author||'Your reading selection'} · ${Math.max(1,Math.ceil(data.sections.reduce((n,s)=>n+s.text.split(/\s+/).length,0)/220))} min read`;
  pages=[];currentPage=-1;layout();
- message('');status('Press play for background music');
+ message('');
  document.fonts?.ready.then(scheduleLayout);
  $('sections').focus({preventScroll:true});
+ startPlayback({autoplay:true});
 }
-$('play').onclick=async()=>{
- if(starting||audio.playing){stop();return;}
+async function startPlayback({autoplay=false}={}){
+ if(!score||starting||audio.playing)return;
  track();const token=++playToken;starting=true;updatePlayButton();status('Preparing audio');
  try{
-  await audio.play();if(token!==playToken)return;
+  await audio.play({autoplay});if(token!==playToken)return;
   starting=false;updatePlayButton();status(audio.playing?'Playing':'Press play for background music');message('');preloadNext();
- }catch(error){if(token===playToken){starting=false;updatePlayButton();status('Press play to retry');message(error.message||'Audio could not start. Press play to retry.');}}
-};
+ }catch(error){if(token===playToken){
+  stop();
+  if(autoplay&&(error.code==='AUTOPLAY_BLOCKED'||error.name==='NotAllowedError')){
+   status('Press Space or Play to start');message('Press Space or Play to start the music.');
+  }else{status('Press Space or Play to retry');message(error.message||'Audio could not start. Press Space or Play to retry.');}
+ }}
+}
+function togglePlayback(){if(starting||audio.playing){stop();return;}return startPlayback();}
+$('play').onclick=togglePlayback;
 $('volume').oninput=event=>audio.setVolume(Number(event.target.value)/100);
 function showEmpty(title='Use the extension.',copy='Choose Paste text, Scan page, or Import file from Undertone in your browser toolbar. Your reader opens when the text is ready.'){
  $('reading').hidden=true;$('player').hidden=true;$('exit').hidden=true;$('welcome').hidden=false;$('welcome').removeAttribute('aria-busy');

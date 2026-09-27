@@ -64,7 +64,7 @@ Click the monkey in your toolbar to begin. There's no separate website to open.
 
 Drafts stay in the popup for the current browser session. If you close the menu while a file or soundtrack is being prepared, reopen it to see the progress.
 
-Once your text is ready, Undertone opens the reader. Press **Play** and scroll at your own pace. Each scroll settles on one page of text, so the soundtrack belongs to the passage you can actually see. Long passages span several pages without switching music. Pages adjust to your window, and a small counter keeps your place. You can also use the arrow keys or Page Up and Page Down. Playback and volume controls stay in a small bar at the bottom. Click **New text** to reopen the extension menu.
+Once your text is ready, Undertone opens the reader. Music starts automatically. Press **Space** or use the player to pause and resume, and scroll at your own pace. Each scroll settles on one page of text, so the soundtrack belongs to the passage you can actually see. Long passages span several pages without switching music. Pages adjust to your window, and a small counter keeps your place. You can also use the arrow keys or Page Up and Page Down. Playback and volume controls stay in a small bar at the bottom. Click **New text** to reopen the extension menu.
 
 ## About the music
 
@@ -104,7 +104,7 @@ Click **Reload** on Undertone in `chrome://extensions`. Open a new reader to see
 
 - **Server unavailable:** check that `npm start` is running. Restart after changing `.env`.
 - **Gemini error:** run `npm run doctor` in a second terminal. It makes test API requests and uses quota. Share its output or **Copy debug report** from the popup, never your key.
-- **No audio:** press Play, then check the reader volume, tab mute, and system output.
+- **No audio:** if your browser blocks autoplay, press **Space** or **Play**. Then check the reader volume, tab mute, and system output.
 - **PowerShell blocks npm:** use Command Prompt or type `npm.cmd` instead of `npm`.
 
 ---

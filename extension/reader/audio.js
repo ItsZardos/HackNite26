@@ -8,15 +8,24 @@ export class AudioEngine {
   this.playToken = 0; this.generation = 0; this.activeMood = null; this.activeIntensity = null;
  }
 
- async prepare() {
+ async prepare({autoplay=false}={}) {
   if (!this.context) {
    const Context = globalThis.AudioContext || globalThis.webkitAudioContext;
    if (!Context) throw new Error('Audio is unavailable in this preview. Open the reader in Chrome, Edge, Firefox, or Safari.');
    this.context = new Context(); this.master = this.context.createGain();
    this.master.gain.value = this.volume; this.master.connect(this.context.destination);
   }
-  // Resume from the Play click, before fetching or decoding audio.
-  await this.context.resume();
+  // Resume before fetching audio. A blocked autoplay resume can stay pending
+  // indefinitely, so release the UI and let Space or Play retry with a gesture.
+  const resumed=this.context.resume();
+  if(autoplay){
+   let timer;
+   try{
+    await Promise.race([resumed,new Promise((_,reject)=>{
+     timer=setTimeout(()=>reject(Object.assign(new Error('Press Space or Play to start the music.'),{code:'AUTOPLAY_BLOCKED'})),1500);
+    })]);
+   }finally{clearTimeout(timer);}
+  }else await resumed;
   if (this.context.state && this.context.state !== 'running') {
    throw new Error('Your browser paused audio. Allow sound for this site, then press Play again.');
   }
@@ -78,9 +87,9 @@ export class AudioEngine {
   return this.buffer(mood).catch(() => {});
  }
 
- async play() {
+ async play(options) {
   const token = ++this.playToken;
-  await this.prepare();
+  await this.prepare(options);
   if (token !== this.playToken) return;
   this.playing = true;
   try { await this.setMood(this.mood, this.intensity, this.track); }

@@ -52,6 +52,6 @@ input:focus-visible { outline: 2px solid #896d43; outline-offset: 4px; }
 #debug pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 150px; overflow: auto; font: 10px/1.5 ui-monospace, monospace; }
 #debug p { color: #706457; }
 #copy-debug { padding: 8px 0; font-size: 11px; }
-.import-choice { padding: 12px 0; font-size: 11px; color: #706457; }
+.import-choice { padding: 12px 0; font-size: 11px; }
 
 #connection { margin:12px 0 0; color:#896d43; font-size:10px; line-height:1.5; }

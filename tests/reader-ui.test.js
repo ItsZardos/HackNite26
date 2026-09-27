@@ -8,26 +8,27 @@ const code=(await readFile(new URL('../extension/reader/app.js',import.meta.url)
 const text='The harbor was quiet in the morning light. '.repeat(5);
 async function reader({id='',record,play}={}){
  const dom=new JSDOM(html,{url:'chrome-extension://test/reader/index.html'+(id?'?article='+id:''),runScripts:'outside-only'});
- let opened=0,reads=0,height=500;const w=dom.window,moods=[];Object.assign(w,{paginateSections,pageAtScroll});
+ let opened=0,reads=0,height=500,plays=0,engine;const w=dom.window,moods=[];Object.assign(w,{paginateSections,pageAtScroll});
  Object.defineProperty(w.HTMLElement.prototype,'clientHeight',{get(){return this.id==='sections'||this.classList.contains('reader-page')?height:0;}});
  Object.defineProperty(w.HTMLElement.prototype,'scrollHeight',{get(){return Math.ceil(this.textContent.trim().split(/\s+/).length/10)*40;}});
  w.HTMLElement.prototype.scrollTo=function({top}){this.scrollTop=top;this.dispatchEvent(new w.Event('scroll'));};
  w.matchMedia=()=>({matches:true});
  w.AudioEngine=class {
-  pause(){this.playing=false;}
+  constructor(){engine=this;this.token=0;}
+  pause(){this.token++;this.playing=false;}
   setScene(section){moods.push(section.mood);return Promise.resolve();}
-  async play(){if(play)await play();else this.playing=true;}
+  async play(options){plays++;const token=this.token;if(play)await play(options);if(token===this.token)this.playing=true;}
   preloadScene(){}setVolume(){}
  };
  w.chrome={storage:{session:{get:async()=>{reads++;return record?{[id]:record}:{};}}},action:{openPopup:async()=>{opened++;}}};
  await w.eval(`(async()=>{${code}\n})()`);
  const article=w.document.querySelector('#sections');
- return {dom,w,moods,article,scroll(value){article.scrollTop=value;article.dispatchEvent(new w.Event('scroll'));},resize(value){height=value;w.dispatchEvent(new w.Event('resize'));},get opened(){return opened;},get reads(){return reads;}};
+ return {dom,w,moods,article,engine,scroll(value){article.scrollTop=value;article.dispatchEvent(new w.Event('scroll'));},resize(value){height=value;w.dispatchEvent(new w.Event('resize'));},get opened(){return opened;},get reads(){return reads;},get plays(){return plays;}};
 }
 const settle=()=>new Promise(resolve=>setTimeout(resolve,180));
 const record={title:'A morning',score:{sections:[{text,mood:'calm',intensity:.3},{text:'The next scene.',mood:'happy',intensity:.4}]}};
 test('reader without a finalized session has no demo, paste form or import workflow',async()=>{
- const h=await reader();assert.equal(h.reads,0);assert.equal(h.w.document.querySelector('#reading').hidden,true);
+ const h=await reader();assert.equal(h.reads,0);assert.equal(h.plays,0);assert.equal(h.w.document.querySelector('#reading').hidden,true);
  assert.equal(h.w.document.querySelector('form'),null);assert.match(h.w.document.querySelector('#entry-copy').textContent,/browser toolbar/);h.w.close();
 });
 test('finalized text opens one accessible page and New text opens the menu',async()=>{
@@ -65,12 +66,13 @@ test('keyboard advances a page and leaves volume keyboard controls alone',async(
  h.w.document.querySelector('#volume').dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'ArrowUp',bubbles:true}));
  assert.equal(h.article.scrollTop,500);h.w.close();
 });
-test('a second click cancels pending Play instead of disabling the control',async()=>{
+test('Play cancels pending autoplay instead of disabling the control or restarting later',async()=>{
  let resolve;const pending=new Promise(r=>resolve=r);
  const h=await reader({id:'article',play:()=>pending,record});
- const button=h.w.document.querySelector('#play'),first=button.onclick();
+ const button=h.w.document.querySelector('#play');
  assert.equal(button.disabled,false);assert.equal(button.dataset.playing,'true');
- await button.onclick();resolve();await first;
+ await button.onclick();resolve();await settle();
+ assert.equal(h.engine.playing,false);assert.equal(h.plays,1);
  assert.equal(button.dataset.playing,'false');assert.equal(h.w.document.querySelector('#play-status').textContent,'Paused');h.w.close();
 });
 
@@ -82,11 +84,44 @@ test('fractional page heights keep later pages aligned at browser zoom levels',a
  assert.equal(h.article.children[12].inert,false);h.w.close();
 });
 
-test('Page Down still works after Play while Space remains available for the button',async()=>{
+test('Space toggles audio with Play focused without scrolling or a second native activation',async()=>{
  const h=await reader({id:'article',record}),button=h.w.document.querySelector('#play');
- button.focus();await button.onclick();
+ button.focus();assert.equal(h.engine.playing,true);
  const space=new h.w.KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true});button.dispatchEvent(space);
- assert.equal(space.defaultPrevented,false);
+ assert.equal(space.defaultPrevented,true);assert.equal(h.engine.playing,false);
+ button.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true}));
+ await settle();assert.equal(h.engine.playing,true);assert.equal(h.article.scrollTop,0);
  button.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'PageDown',bubbles:true,cancelable:true}));
  await settle();assert.equal(h.article.scrollTop,500);assert.equal(h.moods.at(-1),'happy');h.w.close();
+});
+
+test('a finalized reading starts music once without a Play click',async()=>{
+ let options;const h=await reader({id:'article',record,play:async value=>{options=value;}});await settle();
+ assert.equal(options.autoplay,true);assert.equal(h.plays,1);assert.equal(h.engine.playing,true);
+ h.resize(400);await settle();assert.equal(h.plays,1);h.w.close();
+});
+
+test('Space controls audio from text, New text and volume without activating their actions',async()=>{
+ const h=await reader({id:'article',record});
+ for(const target of [h.article,h.w.document.querySelector('#exit'),h.w.document.querySelector('#volume')]){
+  const before=h.engine.playing;
+  target.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true}));await settle();
+  assert.equal(h.engine.playing,!before);assert.equal(h.opened,0);assert.equal(h.article.scrollTop,0);
+  target.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:' ',repeat:true,bubbles:true,cancelable:true}));
+  assert.equal(h.engine.playing,!before);
+ }
+ const input=h.w.document.createElement('textarea');h.w.document.body.append(input);
+ const space=new h.w.KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true});input.dispatchEvent(space);
+ assert.equal(space.defaultPrevented,false);h.w.close();
+});
+
+test('blocked autoplay offers Space to start and a gesture successfully retries',async()=>{
+ let attempts=0;const h=await reader({id:'article',record,play:async options=>{
+  if(++attempts===1){assert.equal(options.autoplay,true);throw Object.assign(new Error('Blocked'),{code:'AUTOPLAY_BLOCKED'});}
+  assert.equal(options.autoplay,false);
+ }});await settle();
+ assert.equal(h.w.document.querySelector('#play').dataset.playing,'false');
+ assert.match(h.w.document.querySelector('#message').textContent,/Press Space or Play/);
+ h.article.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true}));await settle();
+ assert.equal(h.engine.playing,true);assert.equal(h.w.document.querySelector('#message').hidden,true);h.w.close();
 });

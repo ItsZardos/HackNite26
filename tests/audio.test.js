@@ -60,6 +60,7 @@ function audioHarness({fetchResponse,decode,resume,hold=false,supported=true,lib
   return {
     engine:globals.engine,sources,gains,requests,
     get context(){return context;},
+    expireAutoplay(){for(const [id,{callback,delay}]of [...timers])if(delay===1500){timers.delete(id);callback();}},
     get rotationDelays(){return [...timers.values()].filter(t=>t.delay>=10000).map(t=>t.delay);},
     rotate(){for(const [id,{callback,delay}]of [...timers])if(delay>=10000){timers.delete(id);callback();}},
     finishFades(){
@@ -104,6 +105,15 @@ test('pausing while context resume is pending prevents playback',async()=>{
   const playing=h.engine.play();h.engine.pause();resumed.resolve();await playing;
   assert.equal(h.requests.length,0);
   assert.equal(h.sources.length,0);
+});
+
+test('blocked autoplay times out without late sound and a gesture can retry',async()=>{
+ const resumed=deferred();let attempts=0;
+ const h=audioHarness({resume:()=>++attempts===1?resumed.promise:Promise.resolve()});
+ const autoplay=h.engine.play({autoplay:true});h.expireAutoplay();
+ await assert.rejects(autoplay,{code:'AUTOPLAY_BLOCKED'});
+ resumed.resolve();await Promise.resolve();assert.equal(h.sources.length,0);assert.equal(h.engine.playing,false);
+ await h.engine.play();assert.equal(h.sources.length,1);h.engine.pause();
 });
 
 test('rapid mood changes start only the latest decoded track',async()=>{
