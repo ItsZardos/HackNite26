@@ -89,13 +89,21 @@ All eight committed `.wav` files in `extension/public/music/` are complete 16-se
 - If the player says it is playing but you hear nothing, check the tab/site mute control, system output device, and both volume controls. Missing files or decoding failures now give explicit messages.
 - If nothing changed after pulling, confirm Chrome loaded the checkout's **extension** folder, click **Reload**, and open a fresh reader tab. Remove any old Undertone installation loaded from `dist-extension`.
 
+## If Gemini scoring fails
+
+Temporary service, network, and short rate-limit failures are retried automatically, up to three attempts within one minute. The popup stays open until scoring succeeds. The backend stops the request if the client disconnects. Gemini 3 text models use low thinking to reduce scoring latency.
+
+The error now identifies the next step: update a rejected key in your local `.env`, check `GEMINI_MODEL` if the model is unavailable, or check your project's access/quota in Google AI Studio. All teammates using the same project key share its API limits. An exhausted daily quota or account restriction needs attention in AI Studio; repeated clicks cannot fix it. No account or billing settings are changed by Undertone.
+
+The server terminal prints a short diagnostic such as `GEMINI_UNAVAILABLE` with its HTTP status, attempt number, and whether it will retry. These diagnostics contain no API keys, article text, or raw provider responses. If a failure persists, share the code and failing article URL, never your `.env`.
+
 ## Development
 
 `npm test` runs Node's built-in tests. `npm run build` validates the complete committed extension; it does not generate a copy. GitHub Actions runs setup, tests and validation on Node 22 for Windows, macOS and Linux. Tests mock Gemini and Chrome APIs; live scoring requires an API key and native toolbar testing requires Chrome.
 
 `extension/` is the complete installable extension: its root owns the popup, extraction and background handoff; `extension/reader/` owns reading, scroll tracking and Web Audio; `extension/public/music/` contains the bundled WAVs. `server/` owns Gemini and local file delivery. `shared/` owns chunking and metadata validation. Bundled WAVs and Mozilla Readability require no installation.
 
-Scans use one structured Gemini request for paragraph selection and emotional scoring. The server validates paragraph IDs and reconstructs text from original paragraphs. Pasted text is scored without page cleanup. Both flows finish before a reader tab is opened. Reader sessions stay in extension session storage to support refresh; restarting Chrome clears them, and only the latest ten sessions are retained.
+Scans combine paragraph selection and emotional scoring in one structured Gemini request, with bounded retries for temporary transport/service failures. The server validates paragraph IDs and reconstructs text from original paragraphs. Pasted text is scored without page cleanup. Both flows finish before a reader tab is opened. Reader sessions stay in extension session storage to support refresh; restarting Chrome clears them, and only the latest ten sessions are retained.
 
 The backend binds to loopback, validates Host/Origin and static paths, and limits request sizes/concurrency. Keys remain server-side. A streaming JSON response starts promptly while analysis runs so the extension worker can wait for Gemini. Audio endpoints support lengths, HEAD and byte ranges for native players. Music starts with a short fade and changes moods with four-second crossfades.
 
@@ -110,3 +118,5 @@ The original starter README is preserved on [archive/pre-undertone-2026-09-27](h
 Original code, sample story, and generated music: MIT (see LICENSE). Mozilla Readability 0.6.0: Apache 2.0, preserved in `extension/vendor/LICENSE.md`.
 
 References: [Chrome popup](https://developer.chrome.com/docs/extensions/develop/ui/add-popup), [activeTab](https://developer.chrome.com/docs/extensions/develop/concepts/activeTab), [Gemini structured output](https://ai.google.dev/gemini-api/docs/structured-output), [Mozilla Readability](https://github.com/mozilla/readability).
+
+Gemini reliability: [API errors and recovery](https://ai.google.dev/gemini-api/docs/generate-content/api-errors), [thinking levels and latency](https://ai.google.dev/gemini-api/docs/generate-content/thinking).

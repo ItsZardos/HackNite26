@@ -7,6 +7,14 @@ import {isPublicPath} from './static-path.js';
 import {serveStaticFile} from './static-file.js';
 const extensionRoot=fileURLToPath(new URL('../extension/',import.meta.url));
 const port=Number(process.env.PORT||8787); let active=0; const calls=[];
+function publicError(error, fallback='Could not prepare the reader. Please try again.') {
+ const safeMessage=typeof error?.message==='string' && (error.message.startsWith('Gemini') || (error.status===503 && error.message.startsWith('Add GEMINI_API_KEY')));
+ const body={error:error?.name==='TimeoutError'?'Gemini timed out. Please try again.':safeMessage?error.message:fallback};
+ if(typeof error?.code==='string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(error.code)) body.code=error.code;
+ if(Number.isFinite(error?.retryAfterSeconds) && error.retryAfterSeconds>=0) body.retryAfterSeconds=error.retryAfterSeconds;
+ return body;
+}
+function errorStatus(error) { return Number.isInteger(error?.status) && error.status>=400 && error.status<=599?error.status:502; }
 const server=http.createServer(async(req,res)=>{
  const origin=req.headers.origin; const local=`http://127.0.0.1:${port}`;
  const extension=origin&&/^chrome-extension:\/\/[a-p]{32}$/.test(origin)&&(!process.env.EXTENSION_ID||origin===`chrome-extension://${process.env.EXTENSION_ID}`);
@@ -28,17 +36,30 @@ const server=http.createServer(async(req,res)=>{
    if(active>=2||calls.length>=12){json(429,{error:'Too many requests. Please wait a minute.'});return;}
    calls.push(Date.now());active++;
    let heartbeat;
+   const controller=new AbortController();
+   let cleaned=false;
+   const cleanup=()=>{
+    if(cleaned)return;
+    cleaned=true;clearInterval(heartbeat);res.off('close',disconnected);active--;
+   };
+   const disconnected=()=>{
+    if(!res.writableEnded)controller.abort(new DOMException('Client disconnected.','AbortError'));
+    cleanup();
+   };
+   res.once('close',disconnected);
    const streaming=input.stream===true;
    try {
     // Send headers promptly so a slow Gemini response does not exceed the
     // extension worker's fetch-header timeout. Whitespace remains valid JSON.
     if(streaming){res.writeHead(200,{'Content-Type':'application/json'});res.write(' ');heartbeat=setInterval(()=>{if(!res.destroyed)res.write(' ');},10000);}
-    const score=await analyze(chunks,{cleanPage:input.scan===true});
+    const score=await analyze(chunks,{cleanPage:input.scan===true,signal:controller.signal});
+    if(res.destroyed)return;
     if(streaming)res.end(JSON.stringify(score));else json(200,score);
    }catch(error){
-    if(!streaming)throw error;
-    res.end(JSON.stringify({error:error.name==='TimeoutError'?'Gemini timed out. Please try again.':error.message?.startsWith('Gemini')||error.status===503?error.message:'Could not prepare the reader. Please try again.'}));
-   }finally{clearInterval(heartbeat);active--;}
+    if(res.destroyed)return;
+    const failure=publicError(error);
+    if(streaming)res.end(JSON.stringify(failure));else json(errorStatus(error),failure);
+   }finally{cleanup();}
    return;
   }
   if(req.method!=='GET'&&req.method!=='HEAD'){json(405,{error:'Method not allowed.'});return;}
@@ -47,6 +68,6 @@ const server=http.createServer(async(req,res)=>{
   if(!isPublicPath(rel)){json(404,{error:'Not found.'});return;}
   const file=path.resolve(extensionRoot,rel);if(!file.startsWith(extensionRoot)){json(404,{error:'Not found.'});return;}
   await serveStaticFile(req,res,file);
- }catch(e){json(e.code==='ENOENT'?404:e.status||502,{error:e.name==='TimeoutError'?'Gemini timed out. Please retry.':e.code==='ENOENT'?'Not found.':e.message?.startsWith('Gemini')||e.status===503?e.message:'Analysis failed. Please retry or open the sample journey.'});}
+ }catch(e){if(!res.destroyed)json(e.code==='ENOENT'?404:errorStatus(e),e.code==='ENOENT'?{error:'Not found.'}:publicError(e,'Analysis failed. Please retry or open the sample journey.'));}
 });
 server.listen(port,'127.0.0.1',()=>console.log(`Undertone ready at http://127.0.0.1:${port}`));

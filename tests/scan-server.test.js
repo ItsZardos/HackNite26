@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import net from 'node:net';
 import {spawn} from 'node:child_process';
-import {mkdtemp, writeFile, rm} from 'node:fs/promises';
+import {mkdtemp, writeFile, readFile, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
@@ -13,14 +13,39 @@ const article = 'Mara followed the path beside the sea, carrying her grandmother
 // This runs only inside the spawned test server. Production code still calls
 // Gemini normally; no real key or external request is needed for these tests.
 const preload = `
+import {appendFile} from 'node:fs/promises';
 const originalFetch = globalThis.fetch;
+const attempts = new Map();
+const record = event => appendFile(process.env.UNDERTONE_TEST_EVENTS, event + '\\n');
 globalThis.fetch = async (url, options) => {
   if (!String(url).startsWith('https://generativelanguage.googleapis.com/')) {
     return originalFetch(url, options);
   }
-  await new Promise(resolve => setTimeout(resolve, 180));
   const body = JSON.parse(options.body);
   const chunks = JSON.parse(body.contents[0].parts[0].text);
+  const trigger = JSON.stringify(chunks).match(/TRIGGER_[A-Z_]+/)?.[0] || 'NORMAL';
+  const attempt = (attempts.get(trigger) || 0) + 1;
+  attempts.set(trigger, attempt);
+  await record(trigger + ':' + attempt);
+  if (trigger.startsWith('TRIGGER_ABORT_')) {
+    return new Promise((resolve, reject) => {
+      const aborted = async () => {
+        await record(trigger + ':aborted');
+        reject(options.signal.reason || new DOMException('Aborted', 'AbortError'));
+      };
+      if (options.signal.aborted) aborted();
+      else options.signal.addEventListener('abort', aborted, {once:true});
+    });
+  }
+  await new Promise(resolve => setTimeout(resolve, 180));
+  let status;
+  if (trigger === 'TRIGGER_TRANSIENT' && attempt === 1) status = 503;
+  if (trigger.startsWith('TRIGGER_UNAVAILABLE')) status = 503;
+  if (trigger === 'TRIGGER_AUTH') status = 401;
+  if (trigger === 'TRIGGER_FORBIDDEN') status = 403;
+  if (status) return new Response(JSON.stringify({error:{code:status, status:status===503?'UNAVAILABLE':'PERMISSION_DENIED', message:'RAW_UPSTREAM_SECRET should never reach the popup'}}), {
+    status, headers:{'Content-Type':'application/json', 'Retry-After':'1'}
+  });
   const invalid = chunks.some(chunk => chunk.paragraphs?.some(p => p.text.includes('TRIGGER_INVALID_SCORE')));
   const score = {overallTone:'Reflective', sections:chunks.map(chunk => ({
     id:chunk.id, mood:'calm', intensity:0.2, energy:0.3, brightness:0.7,
@@ -44,8 +69,8 @@ async function availablePort() {
   return port;
 }
 
-function postScan(port, text, splitUnicode = false) {
-  const payload = Buffer.from(JSON.stringify({text, scan:true, stream:true}));
+function postScan(port, text, splitUnicode = false, stream = true) {
+  const payload = Buffer.from(JSON.stringify({text, scan:true, stream}));
   return new Promise((resolve, reject) => {
     let endTimer;
     const request = http.request({
@@ -61,7 +86,7 @@ function postScan(port, text, splitUnicode = false) {
       }));
     });
     request.once('error', error => { clearTimeout(endTimer); reject(error); });
-    request.setTimeout(5000, () => request.destroy(new Error('Scan test request timed out')));
+    request.setTimeout(10000, () => request.destroy(new Error('Scan test request timed out')));
     if (splitUnicode) {
       const offset = payload.indexOf(Buffer.from('🙂'));
       assert.ok(offset >= 0, 'The test payload must contain the multibyte character');
@@ -74,24 +99,46 @@ function postScan(port, text, splitUnicode = false) {
   });
 }
 
+function disconnectScan(port, text) {
+  return new Promise((resolve, reject) => {
+    let disconnected = false;
+    const request = http.request({
+      hostname:'127.0.0.1', port, path:'/api/analyze', method:'POST',
+      headers:{'Content-Type':'application/json'}
+    }, response => {
+      response.once('data', () => {
+        disconnected = true;
+        request.destroy();
+        resolve();
+      });
+      response.on('error', error => { if (!disconnected) reject(error); });
+    });
+    request.on('error', error => { if (!disconnected) reject(error); });
+    request.setTimeout(3000, () => request.destroy(new Error('Disconnect test did not receive headers')));
+    request.end(JSON.stringify({text, scan:true, stream:true}));
+  });
+}
+
 function assertStartedStreaming(response) {
   assert.equal(response.status, 200);
   assert.equal(response.headers['content-type'], 'application/json');
   assert.match(response.firstPart, /^\s+$/, 'Headers and initial whitespace must arrive before the delayed Gemini result');
 }
 
-test('scan server streams scores and preserves incoming UTF-8 text', {timeout:15000}, async t => {
+test('scan server streams scores, reports upstream errors and cancels disconnected work', {timeout:30000}, async t => {
   const directory = await mkdtemp(path.join(tmpdir(), 'undertone-scan-test-'));
   let server;
   try {
     const preloadPath = path.join(directory, 'mock-gemini.mjs');
+    const eventsPath = path.join(directory, 'upstream-events.txt');
     await writeFile(preloadPath, preload);
+    await writeFile(eventsPath, '');
     const port = await availablePort();
     server = spawn(process.execPath, [
       '--import', pathToFileURL(preloadPath).href,
       fileURLToPath(new URL('../scripts/start.js', import.meta.url))
     ], {
-      cwd:directory, env:{...process.env, PORT:String(port), GEMINI_API_KEY:'test'},
+      cwd:directory, env:{...process.env, PORT:String(port), GEMINI_API_KEY:'test', UNDERTONE_TEST_EVENTS:eventsPath},
       stdio:['ignore', 'pipe', 'pipe']
     });
     let stderr = '';
@@ -125,6 +172,59 @@ test('scan server streams scores and preserves incoming UTF-8 text', {timeout:15
       const failure = JSON.parse(response.body);
       assert.match(failure.error, /Gemini returned an unreadable score/);
       assert.equal(failure.sections, undefined);
+    });
+
+    const attemptCount = async trigger => (await readFile(eventsPath, 'utf8')).split('\n').filter(line => new RegExp(`^${trigger}:\\d+$`).test(line)).length;
+
+    await t.test('one transient HTTP 503 is retried before a streamed score succeeds', async () => {
+      const response = await postScan(port, `Home\n\n${article} TRIGGER_TRANSIENT`);
+      assertStartedStreaming(response);
+      const score = JSON.parse(response.body);
+      assert.equal(score.source, 'gemini');
+      assert.match(score.sections[0].text, /TRIGGER_TRANSIENT/);
+      assert.equal(await attemptCount('TRIGGER_TRANSIENT'), 2);
+    });
+
+    await t.test('repeated upstream errors preserve safe code and retry guidance in both response modes', async () => {
+      for (const [trigger, stream] of [['TRIGGER_UNAVAILABLE_STREAM', true], ['TRIGGER_UNAVAILABLE_JSON', false]]) {
+        const response = await postScan(port, `Home\n\n${article} ${trigger}`, false, stream);
+        if (stream) assertStartedStreaming(response);
+        else assert.equal(response.status, 503);
+        const failure = JSON.parse(response.body);
+        assert.match(failure.error, /^Gemini/);
+        assert.equal(failure.code, 'GEMINI_UNAVAILABLE');
+        assert.equal(failure.retryAfterSeconds, 1);
+        assert.doesNotMatch(response.body, /RAW_UPSTREAM_SECRET/);
+        assert.equal(failure.sections, undefined);
+        assert.equal(await attemptCount(trigger), 3);
+      }
+    });
+
+    await t.test('authentication errors fail once and expose safe actionable messages', async () => {
+      for (const [trigger, stream] of [['TRIGGER_AUTH', true], ['TRIGGER_FORBIDDEN', false]]) {
+        const response = await postScan(port, `Home\n\n${article} ${trigger}`, false, stream);
+        if (stream) assertStartedStreaming(response);
+        else assert.equal(response.status, 503);
+        const failure = JSON.parse(response.body);
+        assert.match(failure.error, /^Gemini/);
+        assert.equal(failure.code, trigger === 'TRIGGER_AUTH' ? 'GEMINI_KEY_INVALID' : 'GEMINI_ACCESS_DENIED');
+        assert.doesNotMatch(response.body, /RAW_UPSTREAM_SECRET/);
+        assert.equal(await attemptCount(trigger), 1);
+      }
+    });
+
+    await t.test('disconnect aborts upstream calls and releases both concurrency slots', async () => {
+      for (const trigger of ['TRIGGER_ABORT_ONE', 'TRIGGER_ABORT_TWO']) {
+        await disconnectScan(port, `Home\n\n${article} ${trigger}`);
+        const deadline = Date.now() + 2000;
+        while (!(await readFile(eventsPath, 'utf8')).includes(`${trigger}:aborted`)) {
+          assert.ok(Date.now() < deadline, 'Client disconnect must abort the upstream signal');
+          await new Promise(resolve => setTimeout(resolve, 20));
+        }
+      }
+      const response = await postScan(port, `Home\n\n${article}`);
+      assertStartedStreaming(response);
+      assert.equal(JSON.parse(response.body).source, 'gemini');
     });
   } finally {
     if (server?.pid && server.exitCode === null && server.signalCode === null) {
