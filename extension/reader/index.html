@@ -25,29 +25,21 @@
       <h1 id="article-title"></h1>
       <div id="byline"></div>
     </div>
-    <div class="focus-strip"><span id="chapter-count"></span><span id="position-hint">Scroll to continue</span></div>
-    <div class="reading-window">
-      <article id="sections" tabindex="0" aria-label="Reading passages" aria-describedby="position-hint"></article>
-      <div id="page-measure" class="passage" aria-hidden="true"></div>
-    </div>
+    <article id="sections" aria-label="Reading text"></article>
   </main>
 
   <div id="message" role="status" aria-live="polite" hidden></div>
 
-  <footer id="player" hidden>
-    <div class="player-top">
-      <div class="mood-group">
-        <span class="mood-light"></span>
-        <div><span class="tiny">CURRENT FEELING</span><div><strong id="mood">Calm</strong><span id="intensity">24%</span></div></div>
-      </div>
-      <div class="playback">
-        <button id="play" aria-label="Play soundtrack">▶</button>
-        <div><span id="play-status" role="status" aria-live="polite">Press play to start</span><small id="music-direction">Original ambient score</small></div>
-      </div>
-      <label class="volume">Volume <input id="volume" type="range" min="0" max="100" value="55"></label>
-      <div class="progress-copy"><span id="progress">1 / 1</span><small>PASSAGE</small></div>
+  <footer id="player" aria-label="Background music" hidden>
+    <div class="player-inner">
+      <button id="play" type="button" aria-label="Play soundtrack" data-playing="false">
+        <svg class="play-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="m7 4 9 6-9 6Z"/></svg>
+        <svg class="pause-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4h3v12H6zm5 0h3v12h-3z"/></svg>
+      </button>
+      <span id="mood" aria-label="Music mood: calm">Calm</span>
+      <span id="play-status" class="sr-only" role="status" aria-live="polite">Press play for background music</span>
+      <label class="volume"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8h3l4-4v12l-4-4H3zM13 7q4 3 0 6"/></svg><span class="sr-only">Volume</span><input id="volume" type="range" min="0" max="100" value="35"></label>
     </div>
-    <nav id="timeline" aria-label="Emotional journey"></nav>
   </footer>
   <script type="module" src="app.js"></script>
   <script type="module" src="../public/brand/mascot.js"></script>

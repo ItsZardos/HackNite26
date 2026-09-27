@@ -114,7 +114,7 @@ test('rapid mood changes start only the latest decoded track',async()=>{
   pending.get('mysterious').resolve({duration:8,mood:'mysterious'});await latest;
   pending.get('tense').resolve({duration:8,mood:'tense'});await older;
   assert.deepEqual(h.sources.filter(source=>source.starts.length).map(source=>source.buffer.mood),['calm','mysterious']);
-  assert.ok(Math.abs(ramps(h.sources[1]).at(-1).time-h.context.currentTime-1.8)<1e-9);
+  assert.ok(Math.abs(ramps(h.sources[1]).at(-1).time-h.context.currentTime-3.2)<1e-9);
   h.engine.pause();
 });
 
@@ -126,7 +126,7 @@ test('crossfade cleanup stops and disconnects the old track while the current tr
   assert.equal(h.sources[0].connections[0].disconnected,true);
   assert.equal(h.sources[1].stops,0);
   assert.equal(h.sources[1].disconnected,false);
-  h.engine.pause();
+  h.engine.pause();h.finishFades();
   assert.equal(h.sources[1].stops,1);
   assert.equal(h.sources[1].disconnected,true);
 });
@@ -136,7 +136,7 @@ test('interrupting a crossfade preserves the current audible gain instead of jum
   const firstTarget=ramps(h.sources[0]).at(-1).value;
   await h.engine.setMood('tense',.8);
   const secondTarget=ramps(h.sources[1]).at(-1).value;
-  h.context.currentTime+=.9;
+  h.context.currentTime+=1.6;
   await h.engine.setMood('mysterious',.4);
   const heldGain=source=>source.connections[0].gain.events.filter(event=>event.type==='set').at(-1).value;
   assert.ok(Math.abs(heldGain(h.sources[0])-firstTarget/2)<1e-9);
@@ -197,6 +197,30 @@ test('prefetch warms the upcoming mood without starting another voice',async()=>
  await h.engine.play();await h.engine.preload('tense');
  assert.deepEqual(h.requests,['calm','tense']);assert.equal(h.sources.length,1);
  const transition=await h.engine.setMood('tense',.7);
- assert.equal(transition.duration,1.8);assert.deepEqual(h.requests,['calm','tense']);
+ assert.equal(transition.duration,3.2);assert.deepEqual(h.requests,['calm','tense']);
  assert.equal(h.sources.length,2);h.engine.pause();
+});
+
+test('cleanup keeps the audible track alive while a later mood is still decoding',async()=>{
+ const entered=deferred(),decoded=deferred();
+ const h=audioHarness({decode:bytes=>{
+  if(bytes.mood==='happy'){entered.resolve();return decoded.promise;}
+  return Promise.resolve({duration:8,mood:bytes.mood});
+ }});
+ await h.engine.play();await h.engine.setMood('tense',.7);
+ const next=h.engine.setMood('happy',.4);await entered.promise;
+ h.finishFades();
+ assert.equal(h.sources[1].stops,0,'the last committed track must keep playing during a download');
+ decoded.resolve({duration:8,mood:'happy'});await next;h.finishFades();
+ assert.equal(h.sources[1].stops,1);assert.equal(h.sources[2].stops,0);h.engine.pause();h.finishFades();
+});
+test('identical moods do not restart their ramp, and pause fades out before stopping',async()=>{
+ const h=audioHarness();await h.engine.play();const before=ramps(h.sources[0]).length;
+ await h.engine.setMood('calm',.3);assert.equal(ramps(h.sources[0]).length,before);
+ h.engine.pause();assert.equal(h.engine.playing,false);assert.equal(h.sources[0].stops,0);
+ assert.equal(ramps(h.sources[0]).at(-1).value,0);h.finishFades();assert.equal(h.sources[0].stops,1);
+});
+test('an old pause cleanup cannot stop a freshly resumed voice',async()=>{
+ const h=audioHarness();await h.engine.play();h.engine.pause();await h.engine.play();
+ h.finishFades();assert.equal(h.sources[0].stops,1);assert.equal(h.sources[1].stops,0);h.engine.pause();h.finishFades();
 });

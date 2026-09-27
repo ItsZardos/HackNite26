@@ -6,7 +6,8 @@
 .mascot { display: block; object-fit: contain; transform-origin: 50% 85%; animation: monkey-idle 9s ease-in-out infinite; }
 .brand-lockup:hover .mascot { animation: monkey-hello 900ms ease-in-out; }
 body:has(#scan:disabled, #read-file:disabled, #open-reader:disabled) .mascot { animation: monkey-listen 1.8s ease-in-out infinite; }
-body:has(#play[aria-label="Pause soundtrack"]) .mascot { animation: monkey-listen 3s ease-in-out infinite; }
+body:has(#play) .mascot { animation: monkey-reader 14s ease-in-out infinite; }
+@keyframes monkey-reader { 0%,75%,100% { transform:none; } 87% { transform:translateY(-1px) rotate(-1deg); } }
 body[data-mascot-paused=true] .mascot { animation: none !important; transform: none !important; }
 @keyframes monkey-idle {
  0%, 65%, 100% { transform: none; }

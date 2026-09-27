@@ -1,8 +1,8 @@
 export class AudioEngine {
  constructor() {
   this.buffers = new Map(); this.voices = new Map();
-  this.playing = false; this.volume = .55; this.mood = 'calm'; this.intensity = .3;
-  this.playToken = 0; this.generation = 0;
+  this.playing = false; this.volume = .35; this.mood = 'calm'; this.intensity = .3;
+  this.playToken = 0; this.generation = 0; this.activeMood = null; this.activeIntensity = null;
  }
 
  async prepare() {
@@ -53,11 +53,17 @@ export class AudioEngine {
  pause() {
   this.playToken++; this.generation++; this.playing = false;
   clearTimeout(this.cleanup);
-  for (const voice of this.voices.values()) this.removeVoice(voice);
+  for (const voice of this.voices.values()) {
+   this.fade(voice, 0, this.context.currentTime, .12);
+   setTimeout(() => this.removeVoice(voice), 140);
+  }
+  this.activeMood = null; this.activeIntensity = null;
   this.voices.clear();
  }
 
  removeVoice(voice) {
+  if (voice.stopped) return;
+  voice.stopped = true;
   voice.source.stop(); voice.source.disconnect(); voice.gain.disconnect();
  }
 
@@ -83,23 +89,25 @@ export class AudioEngine {
   this.mood = mood; this.intensity = intensity;
   if (!this.playing) return;
   const generation = ++this.generation;
+  if (this.activeMood === mood && this.activeIntensity === intensity) return {duration: 0};
   let buffer;
   try { buffer = await this.buffer(mood); }
   catch (error) { if (this.playing && generation === this.generation) throw error; return; }
   if (!this.playing || generation !== this.generation) return;
   const now = this.context.currentTime;
-  const duration = this.voices.size ? 1.8 : .25;
+  const duration = this.voices.size ? 3.2 : .25;
   if (!this.voices.has(mood)) {
    const source = this.context.createBufferSource(), gain = this.context.createGain();
    source.buffer = buffer; source.loop = true; gain.gain.value = 0;
    source.connect(gain).connect(this.master); source.start(0, now % buffer.duration);
    this.voices.set(mood, {source, gain});
   }
-  for (const [key, voice] of this.voices) this.fade(voice, key === mood ? .65 + .25 * intensity : 0, now, duration);
+  for (const [key, voice] of this.voices) this.fade(voice, key === mood ? .68 + .07 * intensity : 0, now, duration);
+  this.activeMood = mood; this.activeIntensity = intensity;
   clearTimeout(this.cleanup);
   this.cleanup = setTimeout(() => {
    for (const [key, voice] of this.voices) {
-    if (key !== this.mood) { this.removeVoice(voice); this.voices.delete(key); }
+    if (key !== mood) { this.removeVoice(voice); this.voices.delete(key); }
    }
   }, duration * 1000 + 200);
   return {duration};

@@ -1,7 +1,7 @@
 <picture>
-  <source media="(prefers-reduced-motion: reduce)" srcset="assets/undertone-logo.svg">
-  <source media="(prefers-color-scheme: dark)" srcset="assets/undertone-logo-dark.gif">
-  <img src="assets/undertone-logo-light.gif" alt="undertone." width="1200">
+  <source media="(prefers-reduced-motion: reduce)" srcset="assets/undertone-logo.svg?v=1.5.1">
+  <source media="(prefers-color-scheme: dark)" srcset="assets/undertone-motion-dark.gif">
+  <img src="assets/undertone-motion-light.gif" alt="undertone." width="1200">
 </picture>
 
 Undertone adds background music to what you're reading. Paste an article, scan a page, or import a document. Gemini identifies the mood of each passage, and the music changes as you read.
@@ -49,7 +49,7 @@ Click the monkey in your toolbar to begin. There's no separate website to open.
 | **Scan page** | Extract the article from the current tab. Navigation and other page clutter are filtered out. |
 | **Import file** | Choose a PDF or DOCX inside the popup, then choose **Open reader**. |
 
-Once your text is ready, Undertone opens a reader tab. Press **Play** and scroll at your own pace. One passage fills the reading area at a time. When you settle on the next passage, its soundtrack fades in smoothly. The bottom bar shows the mood and lets you revisit a section. To read something else, click **New text** to reopen the extension menu.
+Once your text is ready, Undertone opens a reader tab. Press **Play** and scroll at your own pace. The text flows continuously, and the music gently follows your position after you pause scrolling. The quiet bottom bar has playback, mood, and volume controls. To read something else, click **New text** to reopen the extension menu.
 
 The eight ambient loops were [synthesized for Undertone](scripts/generate_music.py). Gemini chooses the mood; it does not generate the audio.
 

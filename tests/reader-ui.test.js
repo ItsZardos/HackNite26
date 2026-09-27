@@ -2,74 +2,67 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {JSDOM} from 'jsdom';
-import {paginateSections,pageAtPosition,pageForAnchor} from '../extension/reader/passages.js';
+import {sectionAtFocus} from '../extension/reader/reading-position.js';
 const html=await readFile(new URL('../extension/reader/index.html',import.meta.url),'utf8');
 const code=(await readFile(new URL('../extension/reader/app.js',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'');
 const text='The harbor was quiet in the morning light. '.repeat(5);
-async function reader({id='',record}={}){
+async function reader({id='',record,play}={}){
  const dom=new JSDOM(html,{url:'chrome-extension://test/reader/index.html'+(id?'?article='+id:''),runScripts:'outside-only'});
- let opened=0,reads=0;const w=dom.window;const moods=[];
- Object.assign(w,{paginateSections,pageAtPosition,pageForAnchor});
- const scroller=w.document.querySelector('#sections'),probe=w.document.querySelector('#page-measure');
- Object.defineProperty(scroller,'clientHeight',{value:500});
- Object.defineProperty(probe,'clientHeight',{value:500});
- Object.defineProperty(probe,'scrollHeight',{get:()=>probe.textContent.length});
- scroller.scrollTo=options=>{scroller.scrollTop=options.top;};
- w.scrollTo=()=>{};w.matchMedia=()=>({matches:false});w.requestAnimationFrame=()=>1;
- w.AudioEngine=class {pause(){this.playing=false;}setMood(mood){moods.push(mood);return Promise.resolve();}};
+ let opened=0,reads=0,offset=0;const w=dom.window,moods=[];w.sectionAtFocus=sectionAtFocus;
+ w.AudioEngine=class {
+  pause(){this.playing=false;}
+  setMood(mood){moods.push(mood);return Promise.resolve();}
+  async play(){if(play)await play();else this.playing=true;}
+  preload(){}setVolume(){}
+ };
  w.chrome={storage:{session:{get:async()=>{reads++;return record?{[id]:record}:{};}}},action:{openPopup:async()=>{opened++;}}};
  await w.eval(`(async()=>{${code}\n})()`);
- return {dom,w,moods,scroller,get opened(){return opened;},get reads(){return reads;}};
+ const article=w.document.querySelector('#sections');
+ [...article.children].forEach((element,i)=>element.getBoundingClientRect=()=>({top:i*500-offset,bottom:(i+1)*500-offset}));
+ return {dom,w,moods,article,scroll(value){offset=value;w.dispatchEvent(new w.Event('scroll'));},get opened(){return opened;},get reads(){return reads;}};
 }
+const settle=()=>new Promise(resolve=>setTimeout(resolve,300));
 test('reader without a finalized session has no demo, paste form or import workflow',async()=>{
- const h=await reader();assert.equal(h.reads,0);
- assert.equal(h.w.document.querySelector('#reading').hidden,true);
- assert.equal(h.w.document.querySelector('#demo'),null);
- assert.equal(h.w.document.querySelector('form'),null);
- assert.match(h.w.document.querySelector('#entry-copy').textContent,/browser toolbar/);h.dom.window.close();
+ const h=await reader();assert.equal(h.reads,0);assert.equal(h.w.document.querySelector('#reading').hidden,true);
+ assert.equal(h.w.document.querySelector('form'),null);assert.match(h.w.document.querySelector('#entry-copy').textContent,/browser toolbar/);h.w.close();
 });
-test('finalized reader reloads stored text and New text opens the extension menu',async()=>{
- const h=await reader({id:'undertone-article-test',record:{title:'A morning',score:{sections:[{id:0,text,mood:'calm',intensity:.3}]}}});
- assert.equal(h.w.document.querySelector('#reading').hidden,false);
- assert.equal(h.w.document.querySelector('#article-title').textContent,'A morning');
- assert.equal(h.w.document.querySelector('#sections p').textContent,text.trim());
- await h.w.document.querySelector('#exit').onclick();assert.equal(h.opened,1);
- assert.match(h.w.location.search,/undertone-article-test/);h.dom.window.close();
+test('finalized text stays whole and accessible; New text opens the menu',async()=>{
+ const h=await reader({id:'article',record:{title:'A morning',score:{sections:[{text,mood:'calm',intensity:.3}]}}});
+ assert.equal(h.w.document.querySelector('#reading').hidden,false);assert.equal(h.w.document.querySelector('#article-title').textContent,'A morning');
+ assert.equal(h.article.querySelector('p').textContent,text);assert.equal(h.article.querySelectorAll('[inert], [aria-hidden=true]').length,0);
+ assert.equal(h.w.document.querySelector('#page-measure'),null);assert.equal(h.w.document.querySelector('#timeline'),null);
+ await h.w.document.querySelector('#exit').onclick();assert.equal(h.opened,1);h.w.close();
 });
-test('missing reader session points back to the popup without opening another tab',async()=>{
- const h=await reader({id:'missing'});
- assert.equal(h.w.document.querySelector('#reading').hidden,true);
- assert.equal(h.w.document.querySelector('#entry-title').textContent,'Text unavailable.');
- assert.equal(h.opened,0);h.dom.window.close();
+test('missing session points back to the popup',async()=>{
+ const h=await reader({id:'missing'});assert.equal(h.w.document.querySelector('#entry-title').textContent,'Text unavailable.');assert.equal(h.opened,0);h.w.close();
+});
+test('continuous scroll waits for a stable boundary and does not rewrite or hide text',async()=>{
+ const h=await reader({id:'article',record:{score:{sections:[{text,mood:'calm',intensity:.2},{text:'Second section',mood:'happy',intensity:.5}]}}});
+ const first=h.article.firstChild;h.scroll(350);assert.deepEqual(h.moods,['calm']);await settle();assert.deepEqual(h.moods,['calm','happy']);
+ h.scroll(235);await settle();assert.deepEqual(h.moods,['calm','happy'],'small reversal stays in the current mood');
+ h.scroll(0);await settle();assert.deepEqual(h.moods,['calm','happy','calm']);assert.equal(h.article.firstChild,first);
+ assert.equal(h.article.querySelectorAll('[inert], [aria-hidden=true]').length,0);h.w.close();
+});
+test('rapid scrolling commits only the final location and resize preserves DOM and selection',async()=>{
+ const h=await reader({id:'article',record:{score:{sections:[{text,mood:'calm',intensity:.2},{text:'Second section',mood:'happy',intensity:.5}]}}});
+ const node=h.article.querySelector('p').firstChild,range=h.w.document.createRange();range.setStart(node,4);range.setEnd(node,20);h.w.getSelection().addRange(range);
+ h.scroll(350);h.scroll(0);await settle();assert.deepEqual(h.moods,['calm']);
+ h.w.dispatchEvent(new h.w.Event('resize'));await settle();assert.equal(h.w.getSelection().toString(),text.slice(4,20));assert.equal(h.article.querySelector('p').firstChild,node);h.w.close();
+});
+test('a second click cancels pending Play instead of disabling the control',async()=>{
+ let resolve;const pending=new Promise(r=>resolve=r);
+ const h=await reader({id:'article',play:()=>pending,record:{score:{sections:[{text,mood:'calm',intensity:.2}]}}});
+ const button=h.w.document.querySelector('#play'),first=button.onclick();
+ assert.equal(button.disabled,false);assert.equal(button.dataset.playing,'true');assert.equal(button.getAttribute('aria-label'),'Pause soundtrack');
+ await button.onclick();resolve();await first;
+ assert.equal(button.dataset.playing,'false');assert.equal(button.getAttribute('aria-label'),'Play soundtrack');assert.equal(h.w.document.querySelector('#play-status').textContent,'Paused');h.w.close();
 });
 
-test('scroll position commits one passage only after settling and same-mood source pages keep playing',async()=>{
- const sections=[{text:'First words. '.repeat(65),mood:'calm',intensity:.3},{text:'A change of scene.',mood:'tense',intensity:.7}];
- const h=await reader({id:'reading',record:{score:{sections}}});
- assert.ok(h.scroller.children.length>2);
- assert.deepEqual(h.moods,['calm']);
- h.scroller.scrollTop=500;h.scroller.dispatchEvent(new h.w.Event('scroll'));
- assert.equal(h.scroller.children[0].dataset.active,'true');
- h.scroller.dispatchEvent(new h.w.Event('scrollend'));
- assert.equal(h.scroller.children[1].dataset.active,'true');
- assert.deepEqual(h.moods,['calm']);
- const last=h.scroller.children.length-1;
- h.scroller.scrollTop=last*500;h.scroller.dispatchEvent(new h.w.Event('scrollend'));
- assert.deepEqual(h.moods,['calm','tense']);
- assert.equal(h.scroller.querySelectorAll('[aria-hidden="false"]').length,1);
- assert.equal(h.scroller.children[0].inert,true);
- assert.equal(h.scroller.children[last].inert,false);
- assert.equal(h.w.document.querySelector('#mood').textContent,'tense');
- assert.match(h.w.document.querySelector('#position-hint').textContent,/End of the text/);
- h.scroller.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'Home'}));
- assert.equal(h.scroller.scrollTop,0);h.scroller.dispatchEvent(new h.w.Event('scrollend'));
- assert.deepEqual(h.moods,['calm','tense','calm']);h.dom.window.close();
-});
-test('scroll fallback settles the final position, including browsers without scrollend',async()=>{
- const h=await reader({id:'reading',record:{score:{sections:[{text:'First passage',mood:'calm',intensity:.2},{text:'Last passage',mood:'happy',intensity:.5}]}}});
- h.scroller.scrollTop=300;h.scroller.dispatchEvent(new h.w.Event('scroll'));
- h.scroller.scrollTop=0;h.scroller.dispatchEvent(new h.w.Event('scroll'));
- await new Promise(resolve=>setTimeout(resolve,220));assert.deepEqual(h.moods,['calm']);
- h.scroller.scrollTop=500;h.scroller.dispatchEvent(new h.w.Event('scroll'));
- await new Promise(resolve=>setTimeout(resolve,220));assert.deepEqual(h.moods,['calm','happy']);h.dom.window.close();
+test('a short closing paragraph gets its soundtrack at the bottom and holds through small reversals',async()=>{
+ const h=await reader({id:'article',record:{score:{sections:[{text,mood:'calm',intensity:.2},{text:'A short ending.',mood:'hopeful',intensity:.4}]}}});
+ let offset=0;Object.defineProperty(h.w,'scrollY',{get:()=>offset});Object.defineProperty(h.w.document.documentElement,'scrollHeight',{value:1200});
+ h.article.children[0].getBoundingClientRect=()=>({top:-offset,bottom:1000-offset});
+ h.article.children[1].getBoundingClientRect=()=>({top:1000-offset,bottom:1100-offset});
+ offset=432;h.w.dispatchEvent(new h.w.Event('scroll'));await settle();assert.deepEqual(h.moods,['calm','hopeful']);
+ offset=422;h.w.dispatchEvent(new h.w.Event('scroll'));await settle();assert.deepEqual(h.moods,['calm','hopeful']);h.w.close();
 });
