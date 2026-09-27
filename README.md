@@ -1,4 +1,4 @@
-<img src="assets/undertone-wordmark.svg" alt="undertone." width="1200">
+<img src="assets/undertone-logo.svg" alt="undertone." width="1200">
 
 Undertone adds background music to what you're reading. Paste an article, scan a page, or import a document. Gemini identifies the mood of each passage, and the music changes as you scroll.
 
