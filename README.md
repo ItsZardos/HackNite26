@@ -4,22 +4,20 @@
   <img src="assets/undertone-motion-light.gif?v=1.6.0" alt="undertone." width="1200">
 </picture>
 
-Undertone turns reading into a scene-aware soundtrack. Paste text, scan a webpage, or import a document. The **Gemini API** reads the narrative context and directs original, quiet music that changes as you read.
+Undertone uses the **Gemini API** to match quiet background music to what you're reading. Paste a passage, scan a webpage, or import a PDF or Word document from the extension. The soundtrack changes as you read, whether you're following a story or working through something for class.
 
 ## Built around Gemini
 
-Gemini is the music supervisor at the center of Undertone. It interprets what a scene feels like, including mixed emotions such as nervous excitement, bittersweet nostalgia, and cautious optimism. A tense story stays suitable for concentration; a school reading gets a restrained study soundtrack.
+Gemini makes the decisions behind the soundtrack. A character can be happy about leaving home and scared at the same time. We want the music to pick up on both, which takes more than spotting a few emotion words.
 
-| Gemini capability | What it does in Undertone |
-| --- | --- |
-| **Context-aware scene understanding** | Reads the supplied sections together to follow the emotional arc, rather than matching isolated keywords. |
-| **Multidimensional emotion analysis** | Returns primary and secondary moods, a scene profile, tension, energy, brightness, and a musical texture. |
-| **Structured outputs** | Produces JSON constrained by a response schema. The server validates section IDs, allowed values, and numeric ranges before playback. |
-| **AI-assisted page cleanup** | Selects numbered article paragraphs and removes obvious navigation, cookie notices, and other page clutter without rewriting retained text. |
-| **Adaptive soundtrack orchestration** | Its musical direction drives selection from 320 original compositions across 20 emotional profiles. |
-| **Resilient API integration** | Server-side keys, bounded retries, model fallback, and specific errors keep failures understandable. We never substitute a fabricated Gemini score. |
+- **Context-aware scene understanding:** Gemini reads the supplied passages together to follow the emotional arc. What happened earlier can change how the next scene feels.
+- **Multidimensional emotion analysis:** We ask for primary and secondary moods, a scene profile, energy, brightness, tension, and a sound texture. These give us room for mixed feelings like nervous excitement, bittersweet nostalgia, and cautious optimism.
+- **Structured outputs:** Gemini returns JSON constrained by a response schema. The server checks section IDs, allowed values, and numeric ranges before those directions reach the reader.
+- **AI-assisted page cleanup:** When you scan a webpage, Gemini selects which extracted paragraphs belong to the article. Menus and cookie notices can go; the paragraphs we keep stay in the author's words.
+- **Adaptive soundtrack orchestration:** Gemini's directions guide the choice of 320 original musical arrangements across 20 emotional profiles. Even tense scenes get a restrained soundtrack, and study material can get a neutral backdrop.
+- **Resilient API integration:** Keys stay on the local server. We use bounded retries and model fallback for temporary failures. If scoring still fails, the popup explains the problem instead of quietly making up a result.
 
-Gemini prepares the score before the reader opens. Playback then follows your reading position locally, with stable mood boundaries and smooth crossfades. New readings require Gemini; music does not make an API call every time you scroll.
+Every new reading relies on Gemini to prepare its soundtrack before the reader opens. After that, playback follows your reading position locally. You can scroll freely without making another API request each time you move down the page.
 
 ## Run the demo
 
@@ -64,25 +62,29 @@ Click the monkey in your toolbar to begin. There's no separate website to open.
 | **Scan page** | Extract the article from the current tab. Navigation and other page clutter are filtered out. |
 | **Import file** | Choose a PDF or DOCX inside the popup, then choose **Open reader**. |
 
-Once your text is ready, Undertone opens a reader tab. Press **Play** and scroll at your own pace. The text flows continuously, and the music gently follows your position after you pause scrolling. The quiet bottom bar has playback, mood, and volume controls. To read something else, click **New text** to reopen the extension menu.
+Once your text is ready, Undertone opens the reader. Press **Play** and scroll at your own pace. The music follows your position after you pause scrolling, so it won't jump through tracks while you skim. Playback and volume controls stay in a small bar at the bottom. Click **New text** to reopen the extension menu.
 
-## About the music
+## How the music is made
 
-The catalog contains **320 original, sample-free instrumental compositions**, with 16 variations for each of 20 emotional profiles. They are dedicated under [CC0 1.0](extension/public/music/LICENSE.md), along with their rendered audio. No third-party recordings, sample packs, or AI music-generation service are used.
+**Gemini chooses the musical direction. A small synthesizer in the extension makes the sound.**
 
-The repository stores compact [composition recipes](extension/public/music/catalog.js), not 320 large recordings. A [local synthesizer](extension/public/music/synth.js) renders each selected recipe into a **48-second stereo arrangement** in a background worker. Compatible keys and tempo, matched loudness, soft attacks, and sparse instrumentation keep the music appropriate for reading and studying.
+The synthesizer builds tones from sine waves, layers them into slow chords and a few higher notes, then adds soft stereo echoes. It follows chord patterns and timing rules written into the code. Each variation has a fixed seed for its note choices and placement, so it sounds the same every time.
 
-If you stay on a scene, another variation from that emotional profile fades in around the 48-second mark. The selector avoids the last 12 tracks. If preparation is delayed, the current arrangement loops until the next is ready. Only a small decoded-audio cache is kept in memory.
+There are **320 arrangements: 16 variations across 20 mood profiles**. They share a musical foundation rather than being 320 independently written songs. Energy changes the number of notes, brightness affects their register and level, and the texture changes how they begin and fade. Sounds named felt, strings, plucks, and pads are synthesized approximations, not recordings of those instruments.
 
-The **eight bundled `.wav` files** are the earlier 16-second loops, generated by [this Python script](scripts/generate_music.py). They remain a playback fallback if local rendering is unavailable. **Gemini analyzes and directs the soundtrack; it does not generate the audio.**
+The [catalog](extension/public/music/catalog.js) stores these settings. The [synthesizer](extension/public/music/synth.js) renders **48-second stereo tracks** on your computer in a background worker. Related keys, a shared tempo, and matched levels help the tracks blend without sudden changes in volume.
 
-To export an actual WAV file for listening or use in an editor:
+Stay on a scene and another matching variation fades in around 48 seconds, avoiding the last 12 tracks. If the next one isn't ready, the current track keeps looping. The **eight bundled WAV files** are older 16-second loops made with [our Python script](scripts/generate_music.py). They serve as a fallback if the synthesizer can't run.
+
+There are no third-party recordings or samples, and no AI music-generation service. The compositions and rendered audio are released under [CC0 1.0](extension/public/music/LICENSE.md).
+
+To save a track as a WAV file:
 
 ```sh
 npm run music:export -- quiet-focus-01
 ```
 
-Files and their license go into `music-exports/`, which Git ignores. Use `--list` to see every track ID, or `--all` to render the full catalog (about 1.4 GB). Exporting uses Node.js and works on Windows, macOS, and Linux.
+It goes into `music-exports/` with a copy of the license. Use `--list` to see the track IDs, or `--all` to export all 320 (about 1.4 GB). Exporting works on Windows, macOS, and Linux. Generated files stay out of Git.
 
 ## Documents and privacy
 
