@@ -1,6 +1,6 @@
 <img src="assets/undertone-wordmark.svg" alt="undertone." width="1200">
 
-Undertone gives what you read an instrumental soundtrack. Gemini identifies the mood of each passage, and the music changes as you scroll—from a quiet opening to a tense moment or a hopeful ending.
+Undertone adds background music to what you're reading. Paste an article, scan a page, or import a document. Gemini identifies the mood of each passage, and the music changes as you scroll.
 
 ## Run the demo
 
@@ -21,7 +21,7 @@ Open the `.env` file that setup creates and paste your key:
 GEMINI_API_KEY=your_key_here
 ```
 
-Leave the other settings as they are, then run:
+You can leave the other settings at their defaults. Start the server with:
 
 ```sh
 npm start
@@ -45,7 +45,7 @@ Click the monkey in your toolbar to begin. There's no separate website to open.
 | **Scan page** | Extract the article from the current tab. Navigation and other page clutter are filtered out. |
 | **Import file** | Choose a PDF or DOCX inside the popup, then choose **Open reader**. |
 
-The reader opens only when your text and soundtrack are ready. Press **Play** and scroll between passages to hear the mood change. The bottom bar shows the current mood and lets you jump between sections. **New text** opens the extension menu again.
+Once your text is ready, Undertone opens a reader tab. Press **Play** and start scrolling. The bottom bar shows the current mood and lets you jump between sections. To read something else, click **New text** to reopen the extension menu.
 
 Files are parsed locally; extracted text is sent to Gemini. Imports support **20 MB**, **100,000 characters**, and **200 PDF pages**. Image-only PDFs need OCR first; older `.doc` files need to be saved as `.docx`. Complex PDF layouts may need a quick check.
 
@@ -72,6 +72,6 @@ Click **Reload** on Undertone in `chrome://extensions`. Open a new reader to see
 
 ---
 
-To verify the project, run `npm test` and `npm run build`. Load `extension/` directly—there's no second build folder.
+To check the project, run `npm test` and `npm run build`. Load `extension/` directly. There's no extra build folder.
 
 [MIT license](LICENSE) · [Mozilla Readability license](extension/vendor/LICENSE.md)
