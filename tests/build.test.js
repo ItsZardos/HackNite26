@@ -63,6 +63,14 @@ test('manifest paths must name assets inside the extension', async t => {
   await assert.rejects(validateExtension(root), /escapes extension/);
 });
 
+test('extension icons must resolve to PNGs at their declared sizes', async t => {
+  const root = await fixture(t);
+  await editManifest(root, manifest => { manifest.action.default_icon['16'] = 'public/brand/icon-32.png'; });
+  await assert.rejects(validateExtension(root), /16×16 PNG/);
+  await editManifest(root, manifest => { manifest.action.default_icon['16'] = '../private.png'; });
+  await assert.rejects(validateExtension(root), /escapes extension/);
+});
+
 test('nested reader HTML links and module imports must resolve', async t => {
   const root = await fixture(t);
   const html = new URL('extension/reader/index.html', root);

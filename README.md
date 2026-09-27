@@ -1,3 +1,5 @@
+<img src="extension/public/brand/monkey.png" alt="Undertone's monkey reading with headphones" width="160" height="160">
+
 # Undertone
 
 A Chrome extension that adds an instrumental soundtrack to what you read. Paste text, scan a webpage, or import a document. Undertone uses Gemini to match the music to the mood of each passage.

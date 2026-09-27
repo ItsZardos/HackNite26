@@ -7,10 +7,12 @@ const requiredFiles = [
   'manifest.json', 'popup.html', 'popup.css', 'popup.js', 'background.js', 'reader-launch.js', 'pdf.js', 'document-file.js', 'import.html', 'import.js', 'import.css',
   'vendor/Readability.js', 'vendor/LICENSE.md',
   'reader/index.html', 'reader/app.js', 'reader/style.css', 'reader/audio.js', 'reader/demo.js',
+  'public/brand/monkey.png', 'public/brand/mascot.css',
+  ...[16, 32, 48, 128].map(size => `public/brand/icon-${size}.png`),
   ...['calm', 'happy', 'hopeful', 'melancholy', 'mysterious', 'tense', 'dark', 'triumphant'].map(mood => `public/music/${mood}.wav`)
 ];
 const allowedFiles = new Set(requiredFiles);
-const allowedDirectories = new Set(['reader', 'vendor', 'public', 'public/music']);
+const allowedDirectories = new Set(['reader', 'vendor', 'public', 'public/music', 'public/brand']);
 
 // The committed folder is the installable extension. Keep its contents explicit
 // so backend files, credentials, and accidental copies cannot enter the package.
@@ -52,6 +54,18 @@ export async function validateExtension(root = projectRoot) {
   }
   checkReference(manifest.action?.default_popup, 'manifest.json');
   checkReference(manifest.background?.service_worker, 'manifest.json');
+  for (const icons of [manifest.icons, manifest.action?.default_icon]) {
+    if (!icons || typeof icons !== 'object') throw new Error('Extension and toolbar icons must be configured.');
+    for (const size of [16, 32, 48, 128]) {
+      checkReference(icons[size], 'manifest.json');
+      const png = await readFile(new URL(icons[size], extension));
+      if (png.length < 33 || !png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+        || png.toString('ascii', 12, 16) !== 'IHDR'
+        || png.readUInt32BE(16) !== size || png.readUInt32BE(20) !== size) {
+        throw new Error(`Extension icon must be a ${size}×${size} PNG: ${icons[size]}`);
+      }
+    }
+  }
   for (const file of files) {
     if (!/\.(html|js|css)$/.test(file) || file.startsWith('vendor/')) continue;
     const source = await readFile(new URL(file, extension), 'utf8');

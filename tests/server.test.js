@@ -28,6 +28,10 @@ test('fresh backend serves reader/music and protects private files on the host O
     assert.equal(response.status,200);
     assert.equal(response.headers.get('content-type'),'text/javascript');
     assert.match(await response.text(),/AudioEngine/);
+    response=await fetch(base+'/public/brand/monkey.png');
+    assert.equal(response.status,200);
+    assert.equal(response.headers.get('content-type'),'image/png');
+    assert.deepEqual(Buffer.from(await response.arrayBuffer()).subarray(0,8),Buffer.from([137,80,78,71,13,10,26,10]));
     for(const route of ['/.env','/local.env','/reader/..%5c.env','/reader/%2e%2e%5cserver/index.js','/reader/..%5cshared/analysis.js','/server/index.js','/shared/analysis.js','/extension/reader/index.html','/scripts/start.js','/package.json']){
       response=await fetch(base+route);assert.equal(response.status,404,route);
     }

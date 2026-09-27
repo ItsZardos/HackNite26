@@ -1,0 +1,37 @@
+/* Shared artwork and small gestures; the reader stays still after a greeting. */
+.brand-lockup { display: flex; align-items: center; gap: 10px; }
+.mascot {
+  display: block;
+  flex: 0 0 auto;
+  object-fit: contain;
+  transform-origin: 50% 85%;
+  animation: monkey-hello 800ms ease-out both;
+}
+.brand-lockup:hover .mascot,
+.brand-lockup:focus-visible .mascot { animation: monkey-nod 650ms ease-in-out; }
+
+/* Follow existing UI states without changing how preparation or playback works. */
+body:has(#scan:disabled, #read-file:disabled) .mascot {
+  animation: monkey-listen 1.8s ease-in-out 3;
+}
+body:has(#play[aria-label="Pause soundtrack"]) .mascot {
+  animation: monkey-listen 1.8s ease-in-out 2;
+}
+@keyframes monkey-hello {
+  0% { transform: translateY(3px) rotate(-5deg); }
+  45% { transform: translateY(-2px) rotate(4deg); }
+  75% { transform: rotate(-2deg); }
+  100% { transform: none; }
+}
+@keyframes monkey-nod {
+  0%, 100% { transform: none; }
+  35% { transform: translateY(2px) rotate(-5deg); }
+  70% { transform: translateY(-1px) rotate(3deg); }
+}
+@keyframes monkey-listen {
+  0%, 100% { transform: rotate(-3deg); }
+  50% { transform: translateY(-2px) rotate(3deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mascot { animation: none !important; transform: none !important; }
+}
