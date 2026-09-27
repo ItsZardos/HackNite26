@@ -1,34 +1,114 @@
 // Runs in the page's isolated extension world, after Readability is injected.
 export function extractArticle() {
-  let parsed;
-  try { parsed = new Readability(document.cloneNode(true)).parse(); } catch {}
-  const box = document.createElement('div');
-  if (parsed?.content) box.innerHTML = parsed.content;
-  const blocks = [...box.querySelectorAll('p,h2,h3,blockquote,pre,li')]
-    .filter(el => !el.parentElement.closest('blockquote,li'))
-    .map(el => el.textContent.trim()).filter(Boolean);
-  return {
-    title: parsed?.title || document.title,
-    author: parsed?.byline || '',
-    text: (blocks.join('\n\n') || parsed?.textContent || document.querySelector('main')?.innerText || document.body.innerText).slice(0, 100000)
+  // Chrome serializes this function: all extraction helpers must live inside it.
+  const warnings = [];
+  const fail = (code, message) => {
+    console.error('[Undertone]', {stage: 'extract', code});
+    return {error: {code, message}, diagnostics: {warnings}};
   };
+  if (document.contentType === 'application/pdf') return fail('SCAN_PDF_UNSUPPORTED', 'The PDF viewer cannot be scanned. Choose Paste text and add the PDF text.');
+  if (!document.body) return fail('SCAN_PAGE_LOADING', 'This page has not finished loading. Wait for its text to appear, then click Scan page again.');
+  try {
+    const snapshot = document.cloneNode(true);
+    // Exclude scripts, hidden content and editable fields without changing the page.
+    const original = document.querySelectorAll('*');
+    const cloned = snapshot.querySelectorAll('*');
+    for (let i = 0; i < original.length; i++) {
+      const node = original[i];
+      // Keep inert head metadata for Readability's title/author detection.
+      if (node === document.documentElement || node.closest('head')) continue;
+      const style = getComputedStyle(node);
+      if (node.matches('script,style,noscript,template,input,textarea,select,button,[hidden],[aria-hidden="true"],[contenteditable]:not([contenteditable="false"])') || style.display === 'none' || style.visibility === 'hidden') cloned[i]?.remove();
+    }
+    function plainText(root) {
+      const parts = [];
+      let length = 0;
+      const blocks = /^(ADDRESS|ARTICLE|ASIDE|BLOCKQUOTE|BR|DIV|H[1-6]|HEADER|HR|LI|MAIN|P|PRE|SECTION|TR)$/;
+      const stack = [root];
+      while (stack.length && length < 100000) {
+        const node = stack.pop();
+        if (node === null) { parts.push('\n\n'); length += 2; continue; }
+        if (node.nodeType === 3) {
+          const text = node.textContent.slice(0, 100000 - length);
+          parts.push(text); length += text.length;
+        } else if (node.nodeType === 1 || node.nodeType === 9) {
+          if (blocks.test(node.nodeName)) { parts.push('\n\n'); length += 2; stack.push(null); }
+          stack.push(...Array.from(node.childNodes).reverse());
+        }
+      }
+      return parts.join('').replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, 100000);
+    }
+    let parsed, text = '', method = 'readability';
+    if (typeof Readability === 'function') {
+      try {
+        // Keep the DOM result; reassigning parsed HTML can be rejected by a page's
+        // Trusted Types policy. A parser failure must not disable the fallback.
+        parsed = new Readability(snapshot.cloneNode(true), {serializer: node => node, charThreshold: 80, maxElemsToParse: 50000}).parse();
+        if (parsed?.content?.nodeType) text = plainText(parsed.content);
+      } catch { warnings.push('READABILITY_PARSE_FAILED'); }
+    } else warnings.push('READABILITY_UNAVAILABLE');
+    if (text.length < 80) {
+      const candidates = [
+        ...Array.from(snapshot.querySelectorAll('article')).map(root => ({root, method: 'article'})),
+        ...Array.from(snapshot.querySelectorAll('main,[role="main"]')).map(root => ({root, method: 'main'}))
+      ].map(candidate => ({...candidate, text: plainText(candidate.root)})).sort((a, b) => b.text.length - a.text.length);
+      const best = candidates.find(candidate => candidate.text.length >= 80);
+      method = best?.method || 'body';
+      text = best?.text || plainText(snapshot.body);
+      warnings.push('USED_DOM_FALLBACK');
+    }
+    if (text.length < 80) return fail('SCAN_NO_TEXT', 'Fewer than 80 readable characters were found. Wait for the article to load, or choose Paste text. Image, canvas and embedded-viewer text may not be accessible.');
+    const diagnostics = {method, characters: text.length, warnings};
+    console.info('[Undertone]', {stage: 'extract', code: 'SCAN_TEXT_READY', ...diagnostics});
+    return {title: parsed?.title || document.title, author: parsed?.byline || '', text, diagnostics};
+  } catch (error) {
+    return fail('SCAN_EXTRACTION_FAILED', 'The page text extractor failed. Reload this page and the Undertone extension, then retry. Open Error details to share the diagnostic code.');
+  }
 }
 
-async function readPage(tabId, api) {
-  try {
-    if (!Number.isInteger(tabId)) throw new Error('No source tab.');
-    const tab = await api.tabs.get(tabId);
-    const url = new URL(tab.url);
+const failure = (code, stage, message) => Object.assign(new Error(message), {code, stage});
+function injectionFailure(error) {
+  const message = error?.message || '';
+  if (/cannot access|missing host permission|not allowed|permission|extensions gallery/i.test(message)) return failure('SCAN_ACCESS_DENIED', 'extract', 'Chrome denied access to this tab. Open a regular article, refresh it, then click the pinned Undertone icon and Scan page. Choose Paste text for protected pages.');
+  if (/no tab|no frame|no document|frame.*removed|tab.*closed|document.*unloaded/i.test(message)) return failure('SCAN_PAGE_CHANGED', 'extract', 'The tab closed or navigated during the scan. Wait for the article to finish loading and scan again.');
+  return failure('SCAN_SCRIPT_FAILED', 'extract', 'Chrome could not run the page extractor. Reload Undertone in chrome://extensions, refresh the article, and retry.');
+}
+
+async function readPage(tabId, api, trace) {
+  if (!Number.isInteger(tabId) || tabId < 0) throw failure('SCAN_NO_TAB', 'tab', 'No active article tab was found. Open an article and click the pinned Undertone icon. Choose Paste text to enter text manually.');
+  let tab;
+  try { tab = await api.tabs.get(tabId); }
+  catch { throw failure('SCAN_TAB_CLOSED', 'tab', 'The source tab is no longer available. Open the article and scan again, or choose Paste text.'); }
+  // URL is optional in Chrome's Tab object. Its absence is not proof that
+  // injection is forbidden; let executeScript check the actual activeTab grant.
+  if (tab.url) {
+    let url;
+    try { url = new URL(tab.url); }
+    catch { throw failure('SCAN_INVALID_TAB', 'tab', 'Chrome did not provide a valid page address. Refresh the article and reopen Undertone.'); }
     if (!['http:', 'https:'].includes(url.protocol) || url.hostname === 'chromewebstore.google.com' || (url.hostname === 'chrome.google.com' && url.pathname.startsWith('/webstore'))) {
-      throw new Error('Restricted page.');
+      throw failure('SCAN_RESTRICTED_PAGE', 'tab', 'Chrome settings, new-tab pages, extension pages, local files and the Chrome Web Store cannot be scanned. Open a normal website article first. Choose Paste text for this content.');
     }
-    await api.scripting.executeScript({target: {tabId}, files: ['vendor/Readability.js']});
-    const [{result} = {}] = await api.scripting.executeScript({target: {tabId}, func: extractArticle});
-    if (!result || typeof result.text !== 'string' || result.text.trim().length < 80) throw new Error('No readable text.');
-    return result;
-  } catch {
-    throw new Error('This page could not be scanned. Choose Paste text and add the article instead.');
   }
+  trace('tab', 'SCAN_TAB_READY');
+  let documentId;
+  try {
+    const injected = await api.scripting.executeScript({target: {tabId}, world: 'ISOLATED', files: ['vendor/Readability.js']});
+    documentId = injected?.find(frame => frame.frameId === 0)?.documentId;
+    trace('readability', 'READABILITY_LOADED');
+  } catch {
+    // A missing/failed parser must not prevent extracting ordinary DOM text.
+    trace('readability', 'READABILITY_LOAD_FAILED');
+  }
+  let frames;
+  try { frames = await api.scripting.executeScript({target: documentId ? {tabId, documentIds: [documentId]} : {tabId}, world: 'ISOLATED', func: extractArticle}); }
+  catch (error) { throw injectionFailure(error); }
+  const frame = frames?.find(frame => frame.frameId === 0) || frames?.[0];
+  const result = frame?.result;
+  if (!result) throw failure('SCAN_NO_RESULT', 'extract', 'Chrome returned no extraction result. The page may have navigated or blocked scripts. Refresh it and scan again.');
+  if (result.error) throw failure(result.error.code, 'extract', result.error.message);
+  if (typeof result.text !== 'string' || result.text.trim().length < 80) throw failure('SCAN_NO_TEXT', 'extract', 'The page did not contain 80 readable characters. Wait for it to load or choose Paste text.');
+  trace('extract', 'SCAN_TEXT_READY', {characters: result.text.length, method: result.diagnostics?.method, warnings: result.diagnostics?.warnings});
+  return result;
 }
 
 async function prepareScore(article, scan, api, fetcher) {
@@ -45,18 +125,18 @@ async function prepareScore(article, scan, api, fetcher) {
         signal: AbortSignal.timeout(65000)
       });
     } catch (error) {
-      if (error.name === 'TimeoutError' || error.name === 'AbortError') throw new Error('Preparing the reader timed out. Please try again.');
-      throw new Error('Start Undertone with npm start, then try again. The local server could not be reached.');
+      if (error.name === 'TimeoutError' || error.name === 'AbortError') throw failure('SERVER_TIMEOUT', 'score', 'Preparing the reader timed out. Please try again.');
+      throw failure('SERVER_UNREACHABLE', 'score', 'Start Undertone with npm start, then try again. The local server could not be reached.');
     }
     let score;
     try { score = await response.json(); }
     catch (error) {
-      if (error.name === 'TimeoutError' || error.name === 'AbortError') throw new Error('Preparing the reader timed out. Please try again.');
-      throw new Error('The server returned an unreadable response. Restart Undertone and try again.');
+      if (error.name === 'TimeoutError' || error.name === 'AbortError') throw failure('SERVER_TIMEOUT', 'score', 'Preparing the reader timed out. Please try again.');
+      throw failure('SERVER_INVALID_RESPONSE', 'score', 'The server returned an unreadable response. Restart Undertone and try again.');
     }
-    if (!response.ok || score?.error) throw new Error(typeof score?.error === 'string' ? score.error : 'Could not prepare this text. Please try again.');
+    if (!response.ok || score?.error) throw Object.assign(failure(/^GEMINI_[A-Z_]+$/.test(score?.code) ? score.code : 'SERVER_ANALYSIS_FAILED', 'score', typeof score?.error === 'string' ? score.error : 'Could not prepare this text. Please try again.'), {httpStatus: response.status, upstreamStatus: score?.upstreamStatus});
     if (!Array.isArray(score?.sections) || !score.sections.length || score.sections.some(section => !section || typeof section.text !== 'string')) {
-      throw new Error('The score is incomplete. Please try again.');
+      throw failure('SERVER_INCOMPLETE_SCORE', 'score', 'The score is incomplete. Please try again.');
     }
     return score;
   } finally {
@@ -73,18 +153,40 @@ async function pruneReaders(api) {
 }
 
 export async function launchReader({mode, tabId, text, title}, api = chrome, createId = () => crypto.randomUUID(), fetcher = fetch) {
-  if (mode !== 'paste' && mode !== 'scan') throw new Error('Unknown reader action.');
-  const article = mode === 'scan' ? await readPage(tabId, api) : {text: typeof text === 'string' ? text.trim() : '', title: title || 'Reading selection', author: ''};
-  if (article.text.length < 80) throw new Error('Please provide at least 80 characters of reading text.');
-  if (article.text.length > 100000) throw new Error('Please use an article under 100,000 characters.');
-  const score = await prepareScore(article, mode === 'scan', api, fetcher);
-  const id = `undertone-article-${createId()}`;
-  await api.storage.session.set({[id]: {score, title: article.title, author: article.author, createdAt: Date.now()}});
+  const events = [];
+  let stage = 'input';
+  const trace = (nextStage, code, details = {}) => {
+    stage = nextStage;
+    const event = {stage, code};
+    if (Number.isInteger(details.characters)) event.characters = details.characters;
+    if (['readability','article','main','body'].includes(details.method)) event.method = details.method;
+    if (Array.isArray(details.warnings)) event.warnings = details.warnings.filter(value => ['READABILITY_PARSE_FAILED','READABILITY_UNAVAILABLE','USED_DOM_FALLBACK'].includes(value));
+    events.push(event);
+    console.info('[Undertone]', event);
+  };
   try {
-    await pruneReaders(api);
-    await api.tabs.create({url: api.runtime.getURL(`reader/index.html?article=${encodeURIComponent(id)}`)});
+    if (mode !== 'paste' && mode !== 'scan') throw failure('INPUT_MODE_INVALID', 'input', 'Unknown reader action.');
+    const article = mode === 'scan' ? await readPage(tabId, api, trace) : {text: typeof text === 'string' ? text.trim() : '', title: title || 'Reading selection', author: ''};
+    if (article.text.length < 80) throw failure('INPUT_TOO_SHORT', 'input', 'Please provide at least 80 characters of reading text.');
+    if (article.text.length > 100000) throw failure('INPUT_TOO_LONG', 'input', 'Please use an article under 100,000 characters.');
+    trace('score', 'SCORING_STARTED', {characters: article.text.length});
+    const score = await prepareScore(article, mode === 'scan', api, fetcher);
+    trace('store', 'SCORE_READY');
+    const id = `undertone-article-${createId()}`;
+    await api.storage.session.set({[id]: {score, title: article.title, author: article.author, createdAt: Date.now()}});
+    try {
+      await pruneReaders(api);
+      trace('open', 'READER_OPENING');
+      await api.tabs.create({url: api.runtime.getURL(`reader/index.html?article=${encodeURIComponent(id)}`)});
+    } catch (error) {
+      await api.storage.session.remove(id);
+      throw error;
+    }
   } catch (error) {
-    await api.storage.session.remove(id);
-    throw error;
+    const known = /^(SCAN|INPUT|SERVER|GEMINI)_[A-Z_]+$/.test(error?.code);
+    const safe = known ? error : failure(stage === 'store' ? 'READER_STORAGE_FAILED' : 'READER_OPEN_FAILED', stage, 'Chrome could not save or open the reader. Reload Undertone in chrome://extensions and try again.');
+    safe.diagnostic = {code: safe.code, stage: safe.stage || stage, mode: mode === 'scan' ? 'scan' : 'paste', events};
+    for (const field of ['httpStatus','upstreamStatus']) if (Number.isInteger(safe[field]) && safe[field] >= 100 && safe[field] <= 599) safe.diagnostic[field] = safe[field];
+    throw safe;
   }
 }

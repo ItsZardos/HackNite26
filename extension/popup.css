@@ -43,3 +43,8 @@ textarea:disabled { opacity: .65; }
 .submit:hover { background: #42392f; color: #f3ede2; }
 #paste-form { padding-bottom: 16px; }
 [hidden] { display: none !important; }
+#debug { margin-top: 14px; border-top: 1px solid #cbbfae; padding-top: 12px; font-size: 11px; line-height: 1.6; }
+#debug summary { cursor: pointer; color: #896d43; }
+#debug pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 150px; overflow: auto; font: 10px/1.5 ui-monospace, monospace; }
+#debug p { color: #706457; }
+#copy-debug { padding: 8px 0; font-size: 11px; }

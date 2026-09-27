@@ -27,6 +27,12 @@
    </form>
   </main>
   <p id="status" role="status" aria-live="polite" hidden></p>
+  <details id="debug" hidden>
+    <summary>Last error details</summary>
+    <pre id="debug-report" tabindex="0"></pre>
+    <button id="copy-debug" type="button">Copy debug report</button>
+    <p>Right-click this popup → Inspect → Console. Page extraction logs also appear in the article’s DevTools console. Filter for “Undertone”.</p>
+  </details>
   <p class="privacy">Text is sent to Gemini to prepare your reader.</p>
   <script type="module" src="popup.js"></script>
 </body>

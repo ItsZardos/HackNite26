@@ -193,6 +193,7 @@ test('scan server streams scores, reports upstream errors and cancels disconnect
         const failure = JSON.parse(response.body);
         assert.match(failure.error, /^Gemini/);
         assert.equal(failure.code, 'GEMINI_UNAVAILABLE');
+        assert.equal(failure.upstreamStatus, 503);
         assert.equal(failure.retryAfterSeconds, 1);
         assert.doesNotMatch(response.body, /RAW_UPSTREAM_SECRET/);
         assert.equal(failure.sections, undefined);

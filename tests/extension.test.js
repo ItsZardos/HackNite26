@@ -48,7 +48,7 @@ test('paste analyzes finalized text, stores the score, then opens a direct reade
 test('scan captures source, injects sequentially, requests AI cleanup and scoring, then opens',async()=>{
   const h=mockChrome();await launch(h,{mode:'scan',tabId:17});
   assert.deepEqual(h.calls.map(c=>c[0]),['get','inject','inject','analyze','store','read-stored','create']);
-  assert.deepEqual(h.calls[1][1],{target:{tabId:17},files:['vendor/Readability.js']});
+  assert.deepEqual(h.calls[1][1],{target:{tabId:17},world:'ISOLATED',files:['vendor/Readability.js']});
   assert.equal(h.calls[2][1].target.tabId,17);assert.equal(typeof h.calls[2][1].func,'function');
   assert.deepEqual(JSON.parse(h.calls[3][2].body),{text:readingText,scan:true,stream:true});
   assert.equal(h.stored['undertone-article-one'].title,'Story');
@@ -85,14 +85,14 @@ for(const url of ['chrome://settings/','file:///story.txt','https://chromewebsto
 for(const options of [{injectionError:true},{text:''}]){
   test('scan failure does not open an unfinished reader: '+JSON.stringify(options),async()=>{
     const h=mockChrome(options);
-    await assert.rejects(launch(h,{mode:'scan',tabId:17}),/could not be scanned/);
+    await assert.rejects(launch(h,{mode:'scan',tabId:17}),{code:options.injectionError?'SCAN_ACCESS_DENIED':'SCAN_NO_TEXT'});
     assert.ok(!h.calls.some(c=>['analyze','store','create'].includes(c[0])));
   });
 }
 test('missing or closed source tab reports a paste fallback in the popup',async()=>{
   for(const tabId of [undefined,17]){
     const h=mockChrome();h.api.tabs.get=async()=>{throw new Error('Tab closed');};
-    await assert.rejects(launch(h,{mode:'scan',tabId}),/Choose Paste text/);
+    await assert.rejects(launch(h,{mode:'scan',tabId}),/choose Paste text/i);
     assert.equal(Object.keys(h.stored).length,0);
   }
 });
@@ -102,6 +102,28 @@ test('HTTP and streamed Gemini errors never produce reader tabs',async()=>{
     await assert.rejects(launch(h,{mode:'paste',text:readingText},'one',async()=>({ok,json:async()=>({error:'Gemini key is missing.'})})),/Gemini key/);
     assert.equal(h.calls.length,0);assert.equal(Object.keys(h.stored).length,0);
   }
+});
+test('a streamed HTTP 505 retains the upstream status and score stage in the debug report',async()=>{
+  const h=mockChrome();
+  await assert.rejects(launch(h,{mode:'scan',tabId:17},'one',async()=>({ok:true,status:200,json:async()=>({error:'Gemini returned HTTP 505.',code:'GEMINI_HTTP_VERSION_UNSUPPORTED',upstreamStatus:505})})),error=>{
+    assert.equal(error.diagnostic.code,'GEMINI_HTTP_VERSION_UNSUPPORTED');
+    assert.equal(error.diagnostic.stage,'score');
+    assert.equal(error.diagnostic.httpStatus,200);
+    assert.equal(error.diagnostic.upstreamStatus,505);
+    assert.ok(error.diagnostic.events.some(event=>event.code==='SCAN_TEXT_READY'));
+    assert.doesNotMatch(JSON.stringify(error.diagnostic),/lighthouse|example.org|Story|Writer/);
+    return true;
+  });
+  assert.ok(!h.calls.some(call=>['store','create'].includes(call[0])));
+});
+test('navigation between parser injection and extraction has a specific failure',async()=>{
+  const h=mockChrome();
+  h.api.scripting.executeScript=async request=>{
+    if(request.files)return [{frameId:0,documentId:'original-document'}];
+    assert.deepEqual(request.target.documentIds,['original-document']);
+    throw new Error('No document with id original-document');
+  };
+  await assert.rejects(launch(h,{mode:'scan',tabId:17}),{code:'SCAN_PAGE_CHANGED'});
 });
 test('unreachable server gives a setup instruction without opening a tab',async()=>{
   const h=mockChrome();
@@ -122,7 +144,7 @@ test('incomplete score never opens a reader',async()=>{
 });
 test('failed reader tab creation removes its orphaned session record',async()=>{
   const h=mockChrome({createError:true});
-  await assert.rejects(launch(h,{mode:'paste',text:readingText},'orphan'),/Tab failed/);
+  await assert.rejects(launch(h,{mode:'paste',text:readingText},'orphan'),{code:'READER_OPEN_FAILED'});
   assert.equal(h.stored['undertone-article-orphan'],undefined);
   assert.deepEqual(h.calls.at(-1),['remove','undertone-article-orphan']);
 });

@@ -12,6 +12,7 @@ function publicError(error, fallback='Could not prepare the reader. Please try a
  const body={error:error?.name==='TimeoutError'?'Gemini timed out. Please try again.':safeMessage?error.message:fallback};
  if(typeof error?.code==='string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(error.code)) body.code=error.code;
  if(Number.isFinite(error?.retryAfterSeconds) && error.retryAfterSeconds>=0) body.retryAfterSeconds=error.retryAfterSeconds;
+ if(Number.isInteger(error?.upstreamStatus) && error.upstreamStatus>=400 && error.upstreamStatus<=599) body.upstreamStatus=error.upstreamStatus;
  return body;
 }
 function errorStatus(error) { return Number.isInteger(error?.status) && error.status>=400 && error.status<=599?error.status:502; }

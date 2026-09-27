@@ -29,6 +29,7 @@ function httpFailure(response, data) {
   }
   if (status === 403) return failure('Gemini denied access. Check the local API key, its API restrictions, and access to the configured model in Google AI Studio.', 'GEMINI_ACCESS_DENIED', 503);
   if (status === 404) return failure('Gemini could not find the configured model. Check GEMINI_MODEL in your local .env and restart npm start.', 'GEMINI_MODEL_UNAVAILABLE', 503);
+  if (status === 505) return failure('Gemini or a network proxy returned HTTP 505 (HTTP version not supported). Check your proxy or try another network; this is not a page-extraction error.', 'GEMINI_HTTP_VERSION_UNSUPPORTED');
   if (status === 402 || error.status === 'FAILED_PRECONDITION') {
     return failure('Gemini requires an account or billing change. Check the project in Google AI Studio before retrying.', 'GEMINI_ACCOUNT_REQUIRED', 503);
   }
@@ -76,7 +77,7 @@ export async function requestGemini(body, {
         if (attemptSignal.aborted || error instanceof TypeError && response.ok) throw error;
         if (response.ok) throw failure('Gemini returned an unreadable score. Please try again.', 'GEMINI_INVALID_RESPONSE');
       }
-      if (!response.ok) throw httpFailure(response, data);
+      if (!response.ok) throw Object.assign(httpFailure(response, data), {upstreamStatus: response.status});
       attemptSignal.throwIfAborted();
       if (!data || typeof data !== 'object') throw failure('Gemini returned an unreadable score. Please try again.', 'GEMINI_INVALID_RESPONSE');
       if (attempt > 1) diagnose({event: 'recovered', attempt, elapsedMs: Date.now() - started});

@@ -33,7 +33,7 @@ Use your own key from [Google AI Studio](https://aistudio.google.com/apikey). Ke
 npm start
 ```
 
-Leave that terminal running. It should print `Undertone ready at http://127.0.0.1:8787`. Restart it whenever you change `.env` or server code. No npm dependencies or Python installation are needed to run Undertone.
+Leave that terminal running. It should print `Undertone ready at http://127.0.0.1:8787`. Restart it whenever you change `.env` or server code. No runtime npm dependencies or Python installation are needed to run Undertone. Development tests use the locked dev dependencies installed by `npm ci`.
 
 ## 3. Install the extension
 
@@ -63,6 +63,7 @@ Save your local work and stop the running server with **Ctrl+C**, then run:
 ```sh
 git pull --ff-only
 npm run setup
+npm ci
 npm test
 ```
 
@@ -97,9 +98,23 @@ The error now identifies the next step: update a rejected key in your local `.en
 
 The server terminal prints a short diagnostic such as `GEMINI_UNAVAILABLE` with its HTTP status, attempt number, and whether it will retry. These diagnostics contain no API keys, article text, or raw provider responses. If a failure persists, share the code and failing article URL, never your `.env`.
 
+## Scan errors and debugging
+
+Open the article on a regular website, then click the pinned Undertone icon and **Scan page**. Chrome settings, new-tab pages, extension pages, the Chrome Web Store and local files cannot be scanned with the current permissions. Use Paste text for PDF, image or canvas content that has no accessible page text.
+
+Version 1.2.3 extracts directly from a cloned DOM instead of assigning article HTML back into the page. It falls back to article/main/body text if Readability cannot load or parse the page, and still sends the result through Gemini cleanup. Scripts, hidden content and editable inputs are excluded. Missing optional tab URL metadata no longer stops an otherwise authorized scan. The source page is left intact.
+
+Failures now show a code such as `SCAN_ACCESS_DENIED`, `SCAN_PAGE_CHANGED`, `SCAN_NO_TEXT`, `SCAN_SCRIPT_FAILED`, `SERVER_UNREACHABLE`, or `GEMINI_UNAVAILABLE`. Open **Last error details → Copy debug report** in the popup. The report includes the installed extension version, failing stage, safe progress events and HTTP statuses when available; it excludes article text, URLs, keys and raw provider responses. The latest failure remains in extension session storage when the popup closes and clears after a successful reader opens.
+
+- **Popup console:** right-click inside the popup → **Inspect** → **Console**.
+- **Background console:** open `chrome://extensions`, enable Developer mode, then click **service worker** under Undertone's Inspect views.
+- **Page extraction console:** open the article's DevTools with **F12 / Ctrl+Shift+J** on Windows/Linux or **⌘⌥J** on Mac. Filter for **Undertone**. If Chrome blocks injection, use the popup/background report instead. F11 controls fullscreen, not the error console.
+
+`stage: extract` means page capture failed before Gemini. `stage: score` means extracted text reached the scoring step. `httpStatus` is the local backend response; `upstreamStatus` is Gemini's actual HTTP error, even when the local streamed response is HTTP 200. For example, upstream HTTP 503 is a temporary availability error, while HTTP 505 reports an unsupported HTTP version from the endpoint or an intermediary. Keep the exact number when sharing a report.
+
 ## Development
 
-`npm test` runs Node's built-in tests. `npm run build` validates the complete committed extension; it does not generate a copy. GitHub Actions runs setup, tests and validation on Node 22 for Windows, macOS and Linux. Tests mock Gemini and Chrome APIs; live scoring requires an API key and native toolbar testing requires Chrome.
+Run `npm ci` once after pulling dependency changes, then `npm test`. Tests use Node's built-in runner and jsdom with the real bundled Readability and serialized extraction function. GitHub Actions installs the locked dev dependencies and runs setup, tests and validation on Node 22 for Windows, macOS and Linux. `npm run build` validates the complete committed extension; it does not generate a copy. Chrome permission APIs and Gemini are mocked in CI; native toolbar testing requires Chrome, and live scoring requires an API key.
 
 `extension/` is the complete installable extension: its root owns the popup, extraction and background handoff; `extension/reader/` owns reading, scroll tracking and Web Audio; `extension/public/music/` contains the bundled WAVs. `server/` owns Gemini and local file delivery. `shared/` owns chunking and metadata validation. Bundled WAVs and Mozilla Readability require no installation.
 
@@ -120,3 +135,5 @@ Original code, sample story, and generated music: MIT (see LICENSE). Mozilla Rea
 References: [Chrome popup](https://developer.chrome.com/docs/extensions/develop/ui/add-popup), [activeTab](https://developer.chrome.com/docs/extensions/develop/concepts/activeTab), [Gemini structured output](https://ai.google.dev/gemini-api/docs/structured-output), [Mozilla Readability](https://github.com/mozilla/readability).
 
 Gemini reliability: [API errors and recovery](https://ai.google.dev/gemini-api/docs/generate-content/api-errors), [thinking levels and latency](https://ai.google.dev/gemini-api/docs/generate-content/thinking).
+
+Debugging: [Chrome extension consoles](https://developer.chrome.com/docs/extensions/get-started/tutorial/debug), [DevTools shortcuts](https://developer.chrome.com/docs/devtools/shortcuts), [HTTP 505](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/505).

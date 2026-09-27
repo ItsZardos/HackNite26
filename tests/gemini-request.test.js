@@ -97,6 +97,7 @@ for (const [status, payload, code] of [
   [400, {error: {details: [{'@type': 'type.googleapis.com/google.rpc.ErrorInfo', reason: 'API_KEY_INVALID'}]}}, 'GEMINI_KEY_INVALID'],
   [403, {error: {status: 'PERMISSION_DENIED'}}, 'GEMINI_ACCESS_DENIED'],
   [404, {error: {status: 'NOT_FOUND'}}, 'GEMINI_MODEL_UNAVAILABLE'],
+  [505, {error: {message: 'Server is unable to handle the request'}}, 'GEMINI_HTTP_VERSION_UNSUPPORTED'],
   [400, {error: {status: 'FAILED_PRECONDITION'}}, 'GEMINI_ACCOUNT_REQUIRED'],
   [400, {error: {status: 'INVALID_ARGUMENT'}}, 'GEMINI_REQUEST_REJECTED']
 ]) {
@@ -105,6 +106,7 @@ for (const [status, payload, code] of [
     const h = harness(async () => { calls++; return response(status, payload); });
     await assert.rejects(h.run(), error => {
       assert.equal(error.code, code);
+      assert.equal(error.upstreamStatus, status);
       assert.match(error.message, /^Gemini/);
       return true;
     });

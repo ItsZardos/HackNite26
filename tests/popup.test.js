@@ -5,20 +5,21 @@ import {readFile} from 'node:fs/promises';
 
 const popupCode=await readFile(new URL('../extension/popup.js',import.meta.url),'utf8');
 const readingText='The sea lay still beneath the lighthouse. '.repeat(12);
-function popupHarness({query=async()=>[{id:42}],send=async()=>({ok:true})}={}){
-  const elements=Object.fromEntries(['paste','scan','status','choices','paste-form','text','back','open-reader'].map(id=>[id,{
+function popupHarness({query=async()=>[{id:42}],send=async()=>({ok:true}),saved={}}={}){
+  const elements=Object.fromEntries(['paste','scan','status','choices','paste-form','text','back','open-reader','debug','debug-report','copy-debug'].map(id=>[id,{
     disabled:false,hidden:['status','paste-form'].includes(id),textContent:'',value:'',focused:false,
     addEventListener(event,callback){this[event]=callback;},
     setAttribute(name,value){this[name]=value;},
     focus(){this.focused=true;}
   }]));
-  const messages=[];let closed=0,queries=0;
+  const messages=[],logs=[],clipboard=[];let closed=0,queries=0;
   vm.runInNewContext(popupCode,{
     document:{getElementById:id=>elements[id]},
-    chrome:{tabs:{query:async args=>{queries++;return query(args);}},runtime:{sendMessage:async msg=>{messages.push({...msg});return send(msg);}}},
+    chrome:{storage:{session:{get:async()=>saved}},tabs:{query:async args=>{queries++;return query(args);}},runtime:{getManifest:()=>({version:'1.2.3'}),sendMessage:async msg=>{messages.push({...msg});return send(msg);}}},
+    console:{error:(...args)=>logs.push(args)}, navigator:{clipboard:{writeText:async text=>clipboard.push(text)}},
     window:{close:()=>closed++}
   });
-  return {elements,messages,get closed(){return closed;},get queries(){return queries;},
+  return {elements,messages,logs,clipboard,get closed(){return closed;},get queries(){return queries;},
     submit:()=>elements['paste-form'].submit({preventDefault(){}})
   };
 }
@@ -77,11 +78,32 @@ test('runtime error also restores popup controls',async()=>{
   assert.equal(h.closed,0);assert.equal(h.elements['open-reader'].disabled,false);
   assert.match(h.elements.status.textContent,/Please try again/);
 });
-async function workerHarness(launchReader){
+test('popup displays, logs and copies a specific failure report without pasted text',async()=>{
+  const diagnostic={code:'SCAN_ACCESS_DENIED',stage:'extract',mode:'scan',version:'1.2.3',events:[{stage:'tab',code:'SCAN_TAB_READY'}]};
+  const h=popupHarness({send:async()=>({ok:false,error:'Chrome denied access. Refresh the article.',diagnostic})});
+  h.elements.text.value=readingText;
+  await h.elements.scan.click();
+  assert.match(h.elements.status.textContent,/SCAN_ACCESS_DENIED/);
+  assert.equal(h.elements.debug.hidden,false);
+  assert.deepEqual(JSON.parse(h.elements['debug-report'].textContent),diagnostic);
+  await h.elements['copy-debug'].click();
+  assert.equal(h.clipboard.length,1);
+  assert.deepEqual(JSON.parse(h.clipboard[0]),diagnostic);
+  assert.doesNotMatch(h.clipboard[0],/lighthouse/);
+  assert.equal(h.logs[0][0],'[Undertone]');
+});
+test('last failure remains inspectable after reopening the popup',async()=>{
+  const diagnostic={code:'GEMINI_HTTP_VERSION_UNSUPPORTED',upstreamStatus:505,stage:'score',version:'1.2.3'};
+  const h=popupHarness({saved:{'undertone-last-error':{diagnostic}}});
+  await Promise.resolve();
+  assert.equal(h.elements.debug.hidden,false);
+  assert.deepEqual(JSON.parse(h.elements['debug-report'].textContent),diagnostic);
+});
+async function workerHarness(launchReader,saved={}){
   const code=(await readFile(new URL('../extension/background.js',import.meta.url),'utf8')).replace("import {launchReader} from './reader-launch.js';",'');
   let handler;
   vm.runInNewContext(code,{
-    chrome:{runtime:{id:'test',getURL:path=>'chrome-extension://test/'+path,onMessage:{addListener:fn=>{handler=fn;}}}},
+    chrome:{storage:{session:{set:async data=>Object.assign(saved,data),remove:async id=>{delete saved[id];}}},runtime:{id:'test',getManifest:()=>({version:'1.2.3'}),getURL:path=>'chrome-extension://test/'+path,onMessage:{addListener:fn=>{handler=fn;}}}},
     launchReader
   });
   return handler;
@@ -98,4 +120,16 @@ test('worker returns actionable launch errors to its popup',async()=>{
   const handler=await workerHarness(async()=>{throw new Error('Start Undertone with npm start.');});
   const response=await new Promise(resolve=>handler({type:'open-reader',mode:'scan'},{id:'test',url:'chrome-extension://test/popup.html'},resolve));
   assert.equal(response.ok,false);assert.match(response.error,/npm start/);
+});
+test('worker stores the last diagnostic and clears it after a successful handoff',async()=>{
+  const saved={},sender={id:'test',url:'chrome-extension://test/popup.html'};
+  const diagnostic={code:'SCAN_NO_TEXT',stage:'extract',mode:'scan',events:[]};
+  const fail=await workerHarness(async()=>{throw Object.assign(new Error('No readable text found.'),{diagnostic});},saved);
+  const response=await new Promise(resolve=>fail({type:'open-reader',mode:'scan',text:readingText},sender,resolve));
+  assert.equal(saved['undertone-last-error'].diagnostic.code,'SCAN_NO_TEXT');
+  assert.equal(response.diagnostic.version,'1.2.3');
+  assert.doesNotMatch(JSON.stringify(saved),/lighthouse/);
+  const succeed=await workerHarness(async()=>{},saved);
+  await new Promise(resolve=>succeed({type:'open-reader',mode:'paste',text:readingText},sender,resolve));
+  assert.equal(saved['undertone-last-error'],undefined);
 });

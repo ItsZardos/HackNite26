@@ -7,10 +7,20 @@ chrome.runtime.onMessage.addListener((request, sender, respond) => {
     respond({ok: false, error: 'Unknown reader action.'});
     return;
   }
-  launchReader(request).then(
-    () => respond({ok: true}),
-    error => respond({ok: false, error: error.message || 'Could not prepare the reader. Please try again.'})
-  );
+  launchReader(request).then(async () => {
+    try { await chrome.storage.session.remove('undertone-last-error'); } catch {}
+    respond({ok: true});
+  }, async error => {
+    const diagnostic = {
+      version: chrome.runtime.getManifest().version,
+      time: new Date().toISOString(),
+      ...(error.diagnostic || {code: 'UNEXPECTED_ERROR', stage: 'handoff', mode: request.mode, events: []})
+    };
+    console.error('[Undertone]', diagnostic);
+    const result = {ok: false, error: error.message || 'Could not prepare the reader. Please try again.', diagnostic};
+    try { await chrome.storage.session.set({'undertone-last-error': result}); } catch {}
+    respond(result);
+  });
   // Preserve the response channel while asynchronous Chrome APIs finish.
   return true;
 });

@@ -2,7 +2,22 @@ const $ = id => document.getElementById(id);
 const paste = $('paste'), scan = $('scan'), status = $('status');
 const choices = $('choices'), form = $('paste-form'), text = $('text');
 const back = $('back'), submit = $('open-reader');
+const debug = $('debug'), debugReport = $('debug-report'), copyDebug = $('copy-debug');
 let opening = false;
+
+function showDiagnostic(diagnostic) {
+  debugReport.textContent = JSON.stringify(diagnostic, null, 2);
+  debug.hidden = false;
+  copyDebug.textContent = 'Copy debug report';
+}
+// Keep the last failure available even if the popup was closed accidentally.
+chrome.storage.session.get('undertone-last-error').then(saved => {
+  if (!opening && saved['undertone-last-error']?.diagnostic) showDiagnostic(saved['undertone-last-error'].diagnostic);
+}).catch(() => {});
+copyDebug.addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(debugReport.textContent); copyDebug.textContent = 'Copied'; }
+  catch { copyDebug.textContent = 'Select the report text and copy it manually'; }
+});
 
 function message(value) {
   status.textContent = value;
@@ -24,6 +39,7 @@ async function openReader(mode) {
     return;
   }
   setBusy(true);
+  debug.hidden = true;
   message(mode === 'scan' ? 'Reading this page and preparing its soundtrack…' : 'Preparing your text and soundtrack…');
   try {
     const request = {type: 'open-reader', mode};
@@ -33,10 +49,13 @@ async function openReader(mode) {
       request.tabId = tab?.id;
     } else request.text = readingText;
     const result = await chrome.runtime.sendMessage(request);
-    if (!result?.ok) throw new Error(result?.error || 'Could not prepare the reader. Please try again.');
+    if (!result?.ok) throw Object.assign(new Error(result?.error || 'Could not prepare the reader. Please try again.'), {diagnostic: result?.diagnostic});
     window.close();
   } catch (error) {
-    message(error.message || 'Could not prepare the reader. Please try again.');
+    const diagnostic = error.diagnostic || {code: 'POPUP_CONNECTION_FAILED', stage: 'handoff', mode, version: chrome.runtime.getManifest().version};
+    console.error('[Undertone]', diagnostic);
+    showDiagnostic(diagnostic);
+    message(`[${diagnostic.code}] ${error.message || 'Could not prepare the reader. Please try again.'}`);
     setBusy(false);
   }
 }
