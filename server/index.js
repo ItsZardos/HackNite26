@@ -5,6 +5,8 @@ import {chunkText} from '../shared/analysis.js';
 import {analyze} from './gemini.js';
 import {isPublicPath} from './static-path.js';
 import {serveStaticFile} from './static-file.js';
+import {extractPdf, MAX_PDF_BYTES} from './pdf.js';
+let activePdfs=0;
 const extensionRoot=fileURLToPath(new URL('../extension/',import.meta.url));
 const port=Number(process.env.PORT||8787); let active=0; const calls=[];
 function publicError(error, fallback='Could not prepare the reader. Please try again.') {
@@ -28,6 +30,22 @@ const server=http.createServer(async(req,res)=>{
  try {
   const url=new URL(req.url,local);
   if(url.pathname==='/api/health'){json(200,{ready:Boolean(process.env.GEMINI_API_KEY)});return;}
+  if(url.pathname==='/api/pdf-text'&&req.method==='POST'){
+   if(req.headers['content-type']?.split(';')[0]!=='application/pdf'){json(415,{code:'PDF_CONTENT_TYPE',error:'PDF upload required.'});return;}
+   if(activePdfs>=2){json(429,{code:'PDF_BUSY',error:'PDF extraction is busy. Wait a moment and retry.'});return;}
+   activePdfs++;
+   const controller=new AbortController();
+   const disconnected=()=>{if(!res.writableEnded)controller.abort(new DOMException('Client disconnected.','AbortError'));};
+   res.once('close',disconnected);
+   try{
+    const parts=[];let bytes=0;
+    for await(const part of req){bytes+=part.length;if(bytes>MAX_PDF_BYTES){json(413,{code:'PDF_TOO_LARGE',error:'PDF exceeds 20 MB. Choose a smaller file.'});return;}parts.push(part);}
+    const result=await extractPdf(Buffer.concat(parts),{signal:controller.signal});
+    if(!res.destroyed)json(200,result);
+   }catch(error){if(!res.destroyed)json(errorStatus(error),{code:error.code?.startsWith('PDF_')?error.code:'PDF_INVALID',error:error.code?.startsWith('PDF_')?error.message:'PDF could not be read. Choose a fresh copy.'});}
+   finally{activePdfs--;res.off('close',disconnected);}
+   return;
+  }
   if(url.pathname==='/api/analyze'&&req.method==='POST'){
    if(!req.headers['content-type']?.startsWith('application/json')){json(415,{error:'JSON required.'});return;}
    const parts=[];let bytes=0;for await(const part of req){bytes+=part.length;if(bytes>600000){json(413,{error:'Article is too large.'});return;}parts.push(part);}

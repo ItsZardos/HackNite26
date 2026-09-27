@@ -1,4 +1,6 @@
+import {readPdfBytes, MAX_PDF_BYTES} from './pdf.js';
 const $ = id => document.getElementById(id);
+const pdfFile=$('pdf-file'), openPdf=$('open-pdf');
 const paste = $('paste'), scan = $('scan'), status = $('status');
 const choices = $('choices'), form = $('paste-form'), text = $('text');
 const back = $('back'), submit = $('open-reader');
@@ -26,11 +28,11 @@ function message(value) {
 
 function setBusy(value) {
   opening = value;
-  for (const control of [paste, scan, back, submit, text]) control.disabled = value;
+  for (const control of [paste, scan, back, submit, text, openPdf, pdfFile]) control.disabled = value;
   submit.textContent = value ? 'Preparing reader…' : 'Open reader';
 }
 
-async function openReader(mode) {
+async function openReader(mode, file) {
   if (opening) return;
   const readingText = text.value.trim();
   if (mode === 'paste' && readingText.length < 80) {
@@ -47,12 +49,18 @@ async function openReader(mode) {
       // Capture the source tab before the worker creates the reader tab.
       const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
       request.tabId = tab?.id;
+    } else if (mode === 'pdf') {
+      message('Extracting PDF text locally…');
+      if(file.size>MAX_PDF_BYTES)throw Object.assign(new Error('PDF exceeds 20 MB. Choose a smaller file.'),{code:'PDF_TOO_LARGE'});
+      const article=await readPdfBytes(await file.arrayBuffer());
+      request.text=article.text;request.title=article.title==='PDF reading'?file.name:article.title;
+      message('Preparing the PDF soundtrack…');
     } else request.text = readingText;
     const result = await chrome.runtime.sendMessage(request);
     if (!result?.ok) throw Object.assign(new Error(result?.error || 'Could not prepare the reader. Please try again.'), {diagnostic: result?.diagnostic});
     window.close();
   } catch (error) {
-    const diagnostic = error.diagnostic || {code: 'POPUP_CONNECTION_FAILED', stage: 'handoff', mode, version: chrome.runtime.getManifest().version};
+    const diagnostic = error.diagnostic || {code: /^(PDF|SERVER)_[A-Z_]+$/.test(error.code)?error.code:'POPUP_CONNECTION_FAILED', stage: mode==='pdf'?'pdf':'handoff', mode, version: chrome.runtime.getManifest().version};
     console.error('[Undertone]', diagnostic);
     showDiagnostic(diagnostic);
     message(`[${diagnostic.code}] ${error.message || 'Could not prepare the reader. Please try again.'}`);
@@ -81,3 +89,9 @@ form.addEventListener('submit', event => {
   return openReader('paste');
 });
 scan.addEventListener('click', () => openReader('scan'));
+openPdf.addEventListener('click',()=>{if(!opening)pdfFile.click();});
+pdfFile.addEventListener('change',async()=>{
+  const file=pdfFile.files?.[0];
+  if(file)await openReader('pdf',file);
+  pdfFile.value='';
+});

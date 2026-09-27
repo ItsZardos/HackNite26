@@ -1,8 +1,9 @@
 import {copyFile, constants} from 'node:fs/promises';
 import {prepareExtension} from './build.js';
 
-if (Number(process.versions.node.split('.')[0]) < 22) {
-  console.error('Undertone requires Node.js 22 or newer. Install Node.js, then run npm run setup again.');
+const [major,minor]=process.versions.node.split('.').map(Number);
+if (major < 22 || major===22 && minor<13) {
+  console.error('Undertone requires Node.js 22.13 or newer. Install Node.js, then run npm run setup again.');
   process.exit(1);
 }
 try {
@@ -13,4 +14,4 @@ try {
   console.log('Kept your existing .env unchanged.');
 }
 await prepareExtension();
-console.log('Add your Gemini key to the local .env file, run npm start, then pin Undertone in Chrome.');
+console.log('Run npm ci to install PDF support. Add your Gemini key to the local .env file, run npm start, then pin Undertone in Chrome.');

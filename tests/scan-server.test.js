@@ -1,3 +1,4 @@
+import {makePdf} from './helpers/pdf-fixture.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -148,6 +149,17 @@ test('scan server streams scores, reports upstream errors and cancels disconnect
       server.stdout.once('data', () => { clearTimeout(timer); resolve(); });
       server.once('error', error => { clearTimeout(timer); reject(error); });
       server.once('exit', code => { clearTimeout(timer); reject(new Error(`Scan test server exited (${code}): ${stderr}`)); });
+    });
+
+    await t.test('PDF endpoint extracts binary locally and rejects wrong origins and content', async()=>{
+      const endpoint=`http://127.0.0.1:${port}/api/pdf-text`;
+      const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/pdf'},body:makePdf()});
+      assert.equal(response.status,200);
+      assert.match((await response.json()).text,/quiet harbor/);
+      const forbidden=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/pdf',Origin:'https://untrusted.example'},body:makePdf()});
+      assert.equal(forbidden.status,403);
+      const invalid=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/pdf'},body:'not a PDF'});
+      assert.equal((await invalid.json()).code,'PDF_INVALID');
     });
 
     await t.test('scan selection arrives after an immediate streaming response', async () => {

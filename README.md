@@ -2,7 +2,7 @@
 
 A Chrome extension that turns reading into an adaptive instrumental soundtrack. Paste or scan in the toolbar popup; open the finalized text directly in a full reader.
 
-Use **Google Chrome**, **Git**, and **Node.js 22 or newer with npm** on Windows, macOS, or Linux. Each teammate runs the local server on their own computer. The extension is not installed by signing into GitHub or opening a repository in VS Code.
+Use **Google Chrome**, **Git**, and **Node.js 22.13 or newer with npm** on Windows, macOS, or Linux. Each teammate runs the local server on their own computer. The extension is not installed by signing into GitHub or opening a repository in VS Code.
 
 ## 1. Get the files
 
@@ -12,6 +12,7 @@ Open **PowerShell / Command Prompt on Windows**, or **Terminal on macOS / Linux*
 git clone https://github.com/ItsZardos/HackNite26.git
 cd HackNite26
 npm run setup
+npm ci
 ```
 
 Setup creates or preserves `.env` and validates the committed extension files. It does not generate a separate extension folder. A local Git clone is needed; a virtual GitHub repository in VS Code does not run the Node server. Already have a checkout? Follow **Pull updates** below.
@@ -33,7 +34,7 @@ Use your own key from [Google AI Studio](https://aistudio.google.com/apikey). Ke
 npm start
 ```
 
-Leave that terminal running. It should print `Undertone ready at http://127.0.0.1:8787`. Restart it whenever you change `.env` or server code. No runtime npm dependencies or Python installation are needed to run Undertone. Development tests use the locked dev dependencies installed by `npm ci`.
+Leave that terminal running. It should print `Undertone ready at http://127.0.0.1:8787`. Restart it whenever you change `.env` or server code. Run `npm ci` after cloning or pulling dependency changes: PDF extraction uses the locked PDF.js dependency. Python is not needed to run Undertone.
 
 ## 3. Install the extension
 
@@ -110,9 +111,25 @@ The error now identifies the next step: update a rejected key in your local `.en
 
 The server terminal prints a short diagnostic such as `GEMINI_UNAVAILABLE` with its HTTP status, model, attempt number, and whether it will retry. `model_fallback` identifies the switch and `recovered` confirms a successful provider response. These diagnostics contain no API keys, article text, or raw provider responses. If a failure persists, share the code and failing article URL, never your `.env`.
 
+## PDFs: local files and hosted documents
+
+Version **1.3.0** reads PDF bytes directly with Mozilla PDF.js on your local server. Chrome's PDF viewer is not an ordinary article DOM. Extracted PDF text is scored without webpage cleanup, then opens in the same reader after scoring succeeds.
+
+After pulling, stop the server, run `npm ci`, start it again with `npm start`, and reload Undertone at `chrome://extensions`. Your local key stays in the existing .env.
+
+- **Hosted PDF:** open the direct PDF in Chrome and click **Scan page**. The extension fetches it using the temporary access for the active tab. PDF MIME responses also work when the URL does not end in .pdf. A site's separate embedded viewer may require its **Download / Open original** action first.
+- **Local PDF tab:** at `chrome://extensions` → **Undertone → Details**, enable **Allow access to file URLs**. Open the PDF in Chrome, then click **Scan page**. Undertone reads only the selected file when you request a scan.
+- **File picker:** choose **Open PDF file** in the extension popup and select the PDF. This works without file-URL permission and is the fallback for downloads, sign-in-dependent links, cross-site redirects, or sites that block fetching. Keep the popup open while the file is being extracted.
+
+PDF bytes go only to your loopback server for extraction and are not saved by Undertone. Only extracted text goes to Gemini. The extension does not request permanent access to all websites; its connection policy allows downloads, but Chrome still enforces active-tab host permissions.
+
+Limits: **20 MB, 200 pages, 100,000 extracted characters**. Oversized documents get an explicit error rather than silently losing pages. Password-protected PDFs must be unlocked locally first. Image-only PDFs need OCR to become searchable; this version does not perform OCR. Reading order in complex multi-column layouts depends on how the PDF stores text and may need manual correction via Paste text.
+
+Specific errors include `PDF_FILE_ACCESS_REQUIRED`, `PDF_DOWNLOAD_FAILED`, `PDF_PASSWORD_REQUIRED`, `PDF_NO_TEXT`, and `PDF_TOO_LARGE`. If PDF support is missing, run `npm ci` and restart. Do not upload your key or .env to diagnose a PDF failure.
+
 ## Scan errors and debugging
 
-Open the article on a regular website, then click the pinned Undertone icon and **Scan page**. Chrome settings, new-tab pages, extension pages, the Chrome Web Store and local files cannot be scanned with the current permissions. Use Paste text for PDF, image or canvas content that has no accessible page text.
+Open the article on a regular website, then click the pinned Undertone icon and **Scan page**. Chrome settings, new-tab pages, other extension pages and the Chrome Web Store cannot be scanned. PDF documents use the separate extraction path described below. Other image or canvas content needs OCR or pasted text.
 
 Version 1.2.3 extracts directly from a cloned DOM instead of assigning article HTML back into the page. It falls back to article/main/body text if Readability cannot load or parse the page, and still sends the result through Gemini cleanup. Scripts, hidden content and editable inputs are excluded. Missing optional tab URL metadata no longer stops an otherwise authorized scan. The source page is left intact.
 
@@ -128,7 +145,7 @@ Failures now show a code such as `SCAN_ACCESS_DENIED`, `SCAN_PAGE_CHANGED`, `SCA
 
 Run `npm ci` once after pulling dependency changes, then `npm test`. Tests use Node's built-in runner and jsdom with the real bundled Readability and serialized extraction function. GitHub Actions installs the locked dev dependencies and runs setup, tests and validation on Node 22 for Windows, macOS and Linux. `npm run build` validates the complete committed extension; it does not generate a copy. Chrome permission APIs and Gemini are mocked in CI; native toolbar testing requires Chrome, and live scoring requires an API key.
 
-`extension/` is the complete installable extension: its root owns the popup, extraction and background handoff; `extension/reader/` owns reading, scroll tracking and Web Audio; `extension/public/music/` contains the bundled WAVs. `server/` owns Gemini and local file delivery. `shared/` owns chunking and metadata validation. Bundled WAVs and Mozilla Readability require no installation.
+`extension/` is the complete installable extension: its root owns the popup, extraction and background handoff; `extension/reader/` owns reading, scroll tracking and Web Audio; `extension/public/music/` contains the bundled WAVs. `server/` owns Gemini and local file delivery. `shared/` owns chunking and metadata validation. Bundled WAVs and Mozilla Readability require no installation; the server PDF.js dependency is installed by npm ci.
 
 Scans combine paragraph selection and emotional scoring in one structured Gemini request, with bounded retries for temporary transport/service failures. The server validates paragraph IDs and reconstructs text from original paragraphs. Pasted text is scored without page cleanup. Both flows finish before a reader tab is opened. Reader sessions stay in extension session storage to support refresh; restarting Chrome clears them, and only the latest ten sessions are retained.
 
@@ -149,3 +166,5 @@ References: [Chrome popup](https://developer.chrome.com/docs/extensions/develop/
 Gemini reliability: [API errors and recovery](https://ai.google.dev/gemini-api/docs/generate-content/api-errors), [thinking levels and latency](https://ai.google.dev/gemini-api/docs/generate-content/thinking).
 
 Debugging: [Chrome extension consoles](https://developer.chrome.com/docs/extensions/get-started/tutorial/debug), [DevTools shortcuts](https://developer.chrome.com/docs/devtools/shortcuts), [HTTP 505](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/505).
+
+PDF references: [PDF.js text extraction](https://github.com/mozilla/pdf.js/blob/master/examples/node/getinfo.mjs), [Chrome activeTab permission](https://developer.chrome.com/docs/extensions/develop/concepts/activeTab), [Chrome cross-origin requests](https://developer.chrome.com/docs/extensions/develop/concepts/network-requests).

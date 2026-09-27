@@ -24,7 +24,7 @@ function mockChrome({url='https://example.org/story',text=readingText,injectionE
       remove:async ids=>{calls.push(['remove',ids]);for(const id of Array.isArray(ids)?ids:[ids])delete stored[id];}
     }}
   };
-  const fetcher=async(url,options)=>{calls.push(['analyze',url,options]);return {ok:true,json:async()=>score};};
+  const fetcher=async(url,options)=>{if(!url.endsWith('/api/analyze')){calls.push(['download',url]);return new Response('page',{headers:{'Content-Type':'text/html'}});}calls.push(['analyze',url,options]);return {ok:true,json:async()=>score};};
   return {api,calls,stored,fetcher};
 }
 const launch=(h,request,id='one',fetcher=h.fetcher)=>launchReader(request,h.api,()=>id,fetcher);
@@ -165,4 +165,43 @@ test('unknown actions and invalid pasted text are rejected without browser opera
   for(const request of [{mode:'other'},{mode:'paste'},{mode:'paste',text:'short'},{mode:'paste',text:'x'.repeat(100001)}]){
     const h=mockChrome();await assert.rejects(launch(h,request));assert.equal(h.calls.length,0);
   }
+});
+
+for(const url of ['https://example.org/report.pdf','file:///Users/reader/report.pdf','https://example.org/download?id=3']){
+ test('PDF scan extracts bytes before scoring and avoids viewer injection when identifiable: '+url,async()=>{
+  const h=mockChrome({url,injectionError:true});
+  h.api.extension={isAllowedFileSchemeAccess:async()=>true};
+  const requests=[];
+  const fetcher=async(address,options)=>{
+   requests.push({address,options});
+   if(address===url)return new Response('%PDF-1.4 fake test bytes',{headers:{'content-type':'application/pdf'}});
+   if(address.endsWith('/api/pdf-text'))return Response.json({text:readingText,title:'PDF title',pages:2});
+   assert.equal(JSON.parse(options.body).scan,undefined,'PDF text should not lose content to webpage cleanup');
+   return Response.json(score);
+  };
+  await launch(h,{mode:'scan',tabId:17},'pdf',fetcher);
+  assert.equal(requests.length,3);
+  assert.equal(requests[0].address,url);
+  assert.equal(requests[1].address,'http://127.0.0.1:8787/api/pdf-text');
+  assert.equal(h.stored['undertone-article-pdf'].title,'PDF title');
+  assert.equal(h.calls.at(-1)[0],'create');
+  if(url.endsWith('.pdf'))assert.ok(!h.calls.some(c=>c[0]==='inject'));
+ });
+}
+test('local PDF permission failure is specific and does not read or transmit the file',async()=>{
+ const h=mockChrome({url:'file:///Users/reader/private.pdf'});
+ h.api.extension={isAllowedFileSchemeAccess:async()=>false};
+ await assert.rejects(launch(h,{mode:'scan',tabId:17}),error=>{
+  assert.equal(error.code,'PDF_FILE_ACCESS_REQUIRED');
+  assert.doesNotMatch(JSON.stringify(error.diagnostic),/private.pdf|Users/);
+  return true;
+ });
+ assert.deepEqual(h.calls.map(c=>c[0]),['get']);
+});
+
+test('cross-origin embedded PDF does not inherit permission from its wrapper page',async()=>{
+ const h=mockChrome();
+ h.api.scripting.executeScript=async request=>request.files?[]:[{result:{error:{code:'SCAN_PDF_DOCUMENT'},pdfUrl:'https://another.example/document.pdf'}}];
+ await assert.rejects(launch(h,{mode:'scan',tabId:17}),{code:'PDF_OPEN_ORIGINAL'});
+ assert.ok(!h.calls.some(c=>['download','analyze','create'].includes(c[0])));
 });

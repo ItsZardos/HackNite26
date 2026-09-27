@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 
-const popupCode=await readFile(new URL('../extension/popup.js',import.meta.url),'utf8');
+const popupCode=(await readFile(new URL('../extension/popup.js',import.meta.url),'utf8')).replace(/^import .*;\n/, '');
 const readingText='The sea lay still beneath the lighthouse. '.repeat(12);
-function popupHarness({query=async()=>[{id:42}],send=async()=>({ok:true}),saved={}}={}){
-  const elements=Object.fromEntries(['paste','scan','status','choices','paste-form','text','back','open-reader','debug','debug-report','copy-debug'].map(id=>[id,{
+function popupHarness({query=async()=>[{id:42}],send=async()=>({ok:true}),saved={},readPdfBytes=async()=>({text:readingText,title:'PDF reading'})}={}){
+  const elements=Object.fromEntries(['pdf-file','open-pdf','paste','scan','status','choices','paste-form','text','back','open-reader','debug','debug-report','copy-debug'].map(id=>[id,{
     disabled:false,hidden:['status','paste-form'].includes(id),textContent:'',value:'',focused:false,
     addEventListener(event,callback){this[event]=callback;},
     setAttribute(name,value){this[name]=value;},
@@ -14,6 +14,7 @@ function popupHarness({query=async()=>[{id:42}],send=async()=>({ok:true}),saved=
   }]));
   const messages=[],logs=[],clipboard=[];let closed=0,queries=0;
   vm.runInNewContext(popupCode,{
+    readPdfBytes, MAX_PDF_BYTES:20*1024*1024,
     document:{getElementById:id=>elements[id]},
     chrome:{storage:{session:{get:async()=>saved}},tabs:{query:async args=>{queries++;return query(args);}},runtime:{getManifest:()=>({version:'1.2.3'}),sendMessage:async msg=>{messages.push({...msg});return send(msg);}}},
     console:{error:(...args)=>logs.push(args)}, navigator:{clipboard:{writeText:async text=>clipboard.push(text)}},
@@ -132,4 +133,22 @@ test('worker stores the last diagnostic and clears it after a successful handoff
   const succeed=await workerHarness(async()=>{},saved);
   await new Promise(resolve=>succeed({type:'open-reader',mode:'paste',text:readingText},sender,resolve));
   assert.equal(saved['undertone-last-error'],undefined);
+});
+
+test('selected PDF is extracted before sending finalized text to worker',async()=>{
+ let extracted=false;
+ const h=popupHarness({readPdfBytes:async bytes=>{assert.equal(bytes.byteLength,8);extracted=true;return {text:readingText,title:'PDF reading'};},send:async request=>{assert.ok(extracted);assert.equal(request.mode,'pdf');return {ok:true};}});
+ h.elements['pdf-file'].files=[{name:'Story.pdf',size:8,arrayBuffer:async()=>new ArrayBuffer(8)}];
+ await h.elements['pdf-file'].change();
+ assert.equal(h.queries,0);assert.equal(h.closed,1);
+ assert.equal(h.messages[0].title,'Story.pdf');
+ assert.equal(h.messages[0].text,readingText);
+});
+test('failed PDF extraction does not open a reader and displays specific error',async()=>{
+ const h=popupHarness({readPdfBytes:async()=>{throw Object.assign(new Error('PDF is password protected.'),{code:'PDF_PASSWORD_REQUIRED'});}});
+ h.elements['pdf-file'].files=[{name:'Private.pdf',size:8,arrayBuffer:async()=>new ArrayBuffer(8)}];
+ await h.elements['pdf-file'].change();
+ assert.equal(h.messages.length,0);assert.equal(h.closed,0);
+ assert.match(h.elements.status.textContent,/PDF_PASSWORD_REQUIRED/);
+ assert.equal(h.elements['open-pdf'].disabled,false);
 });

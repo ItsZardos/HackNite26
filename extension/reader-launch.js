@@ -1,3 +1,4 @@
+import {readPdfUrl} from './pdf.js';
 // Runs in the page's isolated extension world, after Readability is injected.
 export function extractArticle() {
   // Chrome serializes this function: all extraction helpers must live inside it.
@@ -7,6 +8,8 @@ export function extractArticle() {
     return {error: {code, message}, diagnostics: {warnings}};
   };
   if (document.contentType === 'application/pdf') return fail('SCAN_PDF_UNSUPPORTED', 'The PDF viewer cannot be scanned. Choose Paste text and add the PDF text.');
+  const embeddedPdf=document.querySelector('embed[type="application/pdf"],object[type="application/pdf"]');
+  if(embeddedPdf) return {error:{code:'SCAN_PDF_DOCUMENT',message:'Open the original PDF or choose Open PDF file in Undertone.'},pdfUrl:embeddedPdf.getAttribute('src')||embeddedPdf.getAttribute('data')};
   if (!document.body) return fail('SCAN_PAGE_LOADING', 'This page has not finished loading. Wait for its text to appear, then click Scan page again.');
   try {
     const snapshot = document.cloneNode(true);
@@ -74,7 +77,7 @@ function injectionFailure(error) {
   return failure('SCAN_SCRIPT_FAILED', 'extract', 'Chrome could not run the page extractor. Reload Undertone in chrome://extensions, refresh the article, and retry.');
 }
 
-async function readPage(tabId, api, trace) {
+async function readPage(tabId, api, trace, fetcher) {
   if (!Number.isInteger(tabId) || tabId < 0) throw failure('SCAN_NO_TAB', 'tab', 'No active article tab was found. Open an article and click the pinned Undertone icon. Choose Paste text to enter text manually.');
   let tab;
   try { tab = await api.tabs.get(tabId); }
@@ -85,9 +88,15 @@ async function readPage(tabId, api, trace) {
     let url;
     try { url = new URL(tab.url); }
     catch { throw failure('SCAN_INVALID_TAB', 'tab', 'Chrome did not provide a valid page address. Refresh the article and reopen Undertone.'); }
+    if (url.protocol === 'file:' && /\.pdf$/i.test(url.pathname)) {
+      if (!await api.extension.isAllowedFileSchemeAccess()) throw failure('PDF_FILE_ACCESS_REQUIRED', 'pdf', 'Enable Allow access to file URLs in chrome://extensions → Undertone → Details, then retry. Or choose Open PDF file in this popup.');
+      trace('pdf', 'PDF_DOWNLOAD_STARTED');
+      return readPdfUrl(tab.url, fetcher);
+    }
     if (!['http:', 'https:'].includes(url.protocol) || url.hostname === 'chromewebstore.google.com' || (url.hostname === 'chrome.google.com' && url.pathname.startsWith('/webstore'))) {
       throw failure('SCAN_RESTRICTED_PAGE', 'tab', 'Chrome settings, new-tab pages, extension pages, local files and the Chrome Web Store cannot be scanned. Open a normal website article first. Choose Paste text for this content.');
     }
+    if (/\.pdf$/i.test(url.pathname)) { trace('pdf', 'PDF_DOWNLOAD_STARTED'); return readPdfUrl(tab.url, fetcher); }
   }
   trace('tab', 'SCAN_TAB_READY');
   let documentId;
@@ -101,10 +110,24 @@ async function readPage(tabId, api, trace) {
   }
   let frames;
   try { frames = await api.scripting.executeScript({target: documentId ? {tabId, documentIds: [documentId]} : {tabId}, world: 'ISOLATED', func: extractArticle}); }
-  catch (error) { throw injectionFailure(error); }
+  catch (error) {
+    // Chrome's built-in PDF viewer blocks DOM injection. Fetch the active
+    // document with the temporary activeTab grant and inspect its MIME type.
+    if(tab.url && injectionFailure(error).code !== 'SCAN_PAGE_CHANGED'){const pdf=await readPdfUrl(tab.url,fetcher,{probe:true});if(pdf){trace('pdf','PDF_TEXT_READY',{characters:pdf.text.length});return pdf;}}
+    throw injectionFailure(error);
+  }
   const frame = frames?.find(frame => frame.frameId === 0) || frames?.[0];
   const result = frame?.result;
   if (!result) throw failure('SCAN_NO_RESULT', 'extract', 'Chrome returned no extraction result. The page may have navigated or blocked scripts. Refresh it and scan again.');
+  if (result.error?.code === 'SCAN_PDF_UNSUPPORTED' && tab.url) return readPdfUrl(tab.url,fetcher);
+  if (result.error?.code === 'SCAN_PDF_DOCUMENT' && tab.url) {
+    const embedded=new URL(result.pdfUrl||tab.url,tab.url);
+    if(embedded.origin===new URL(tab.url).origin && ['https:','http:'].includes(embedded.protocol)) {
+      const pdf=await readPdfUrl(embedded.href,fetcher,{probe:true});if(pdf)return pdf;
+    }
+    throw failure('PDF_OPEN_ORIGINAL','pdf','Open or download the original PDF from this viewer, then choose Scan page or Open PDF file in Undertone.');
+  }
+  if(result.error?.code==='SCAN_NO_TEXT'&&tab.url){const pdf=await readPdfUrl(tab.url,fetcher,{probe:true});if(pdf)return pdf;}
   if (result.error) throw failure(result.error.code, 'extract', result.error.message);
   if (typeof result.text !== 'string' || result.text.trim().length < 80) throw failure('SCAN_NO_TEXT', 'extract', 'The page did not contain 80 readable characters. Wait for it to load or choose Paste text.');
   trace('extract', 'SCAN_TEXT_READY', {characters: result.text.length, method: result.diagnostics?.method, warnings: result.diagnostics?.warnings});
@@ -165,12 +188,12 @@ export async function launchReader({mode, tabId, text, title}, api = chrome, cre
     console.info('[Undertone]', event);
   };
   try {
-    if (mode !== 'paste' && mode !== 'scan') throw failure('INPUT_MODE_INVALID', 'input', 'Unknown reader action.');
-    const article = mode === 'scan' ? await readPage(tabId, api, trace) : {text: typeof text === 'string' ? text.trim() : '', title: title || 'Reading selection', author: ''};
+    if (!['paste','scan','pdf'].includes(mode)) throw failure('INPUT_MODE_INVALID', 'input', 'Unknown reader action.');
+    const article = mode === 'scan' ? await readPage(tabId, api, trace, fetcher) : {text: typeof text === 'string' ? text.trim() : '', title: title || 'Reading selection', author: ''};
     if (article.text.length < 80) throw failure('INPUT_TOO_SHORT', 'input', 'Please provide at least 80 characters of reading text.');
     if (article.text.length > 100000) throw failure('INPUT_TOO_LONG', 'input', 'Please use an article under 100,000 characters.');
     trace('score', 'SCORING_STARTED', {characters: article.text.length});
-    const score = await prepareScore(article, mode === 'scan', api, fetcher);
+    const score = await prepareScore(article, mode === 'scan' && article.kind !== 'pdf', api, fetcher);
     trace('store', 'SCORE_READY');
     const id = `undertone-article-${createId()}`;
     await api.storage.session.set({[id]: {score, title: article.title, author: article.author, createdAt: Date.now()}});
@@ -183,9 +206,9 @@ export async function launchReader({mode, tabId, text, title}, api = chrome, cre
       throw error;
     }
   } catch (error) {
-    const known = /^(SCAN|INPUT|SERVER|GEMINI)_[A-Z_]+$/.test(error?.code);
+    const known = /^(SCAN|INPUT|SERVER|GEMINI|PDF)_[A-Z_]+$/.test(error?.code);
     const safe = known ? error : failure(stage === 'store' ? 'READER_STORAGE_FAILED' : 'READER_OPEN_FAILED', stage, 'Chrome could not save or open the reader. Reload Undertone in chrome://extensions and try again.');
-    safe.diagnostic = {code: safe.code, stage: safe.stage || stage, mode: mode === 'scan' ? 'scan' : 'paste', events};
+    safe.diagnostic = {code: safe.code, stage: safe.stage || stage, mode: ['scan','pdf'].includes(mode) ? mode : 'paste', events};
     for (const field of ['httpStatus','upstreamStatus']) if (Number.isInteger(safe[field]) && safe[field] >= 100 && safe[field] <= 599) safe.diagnostic[field] = safe[field];
     throw safe;
   }
