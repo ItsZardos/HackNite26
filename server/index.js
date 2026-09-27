@@ -5,7 +5,7 @@ import {chunkText} from '../shared/analysis.js';
 import {analyze} from './gemini.js';
 import {isPublicPath} from './static-path.js';
 import {serveStaticFile} from './static-file.js';
-const root=fileURLToPath(new URL('../',import.meta.url));
+const extensionRoot=fileURLToPath(new URL('../extension/',import.meta.url));
 const port=Number(process.env.PORT||8787); let active=0; const calls=[];
 const server=http.createServer(async(req,res)=>{
  const origin=req.headers.origin; const local=`http://127.0.0.1:${port}`;
@@ -45,7 +45,7 @@ const server=http.createServer(async(req,res)=>{
   if(url.pathname==='/'){res.writeHead(302,{Location:'/reader/index.html'});res.end();return;}
   const rel=decodeURIComponent(url.pathname.slice(1));
   if(!isPublicPath(rel)){json(404,{error:'Not found.'});return;}
-  const file=path.resolve(root,rel);if(!file.startsWith(root)){json(404,{error:'Not found.'});return;}
+  const file=path.resolve(extensionRoot,rel);if(!file.startsWith(extensionRoot)){json(404,{error:'Not found.'});return;}
   await serveStaticFile(req,res,file);
  }catch(e){json(e.code==='ENOENT'?404:e.status||502,{error:e.name==='TimeoutError'?'Gemini timed out. Please retry.':e.code==='ENOENT'?'Not found.':e.message?.startsWith('Gemini')||e.status===503?e.message:'Analysis failed. Please retry or open the sample journey.'});}
 });

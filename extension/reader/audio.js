@@ -29,7 +29,7 @@ export class AudioEngine {
     if (!response.ok) throw new Error(`Soundtrack missing (${mood}, HTTP ${response.status}). Pull the latest files, run npm run setup, and reload the extension.`);
     const data = await response.arrayBuffer();
     try { return await this.context.decodeAudioData(data); }
-    catch { throw new Error(`The ${mood} soundtrack could not be decoded. Pull the complete repository and run npm run setup. Use Audio Preview to check public/music/${mood}.wav in VS Code.`); }
+    catch { throw new Error(`The ${mood} soundtrack could not be decoded. Pull the complete repository and run npm run setup. Use Audio Preview to check extension/public/music/${mood}.wav in VS Code.`); }
    })().catch(error => { this.buffers.delete(mood); throw error; }));
   }
   return this.buffers.get(mood);

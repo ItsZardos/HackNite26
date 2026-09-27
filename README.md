@@ -14,7 +14,7 @@ cd HackNite26
 npm run setup
 ```
 
-Already have a checkout? Save your local work, then run `git pull --ff-only` and `npm run setup` in its folder. A local Git clone is needed; a virtual GitHub repository in VS Code does not run the Node server.
+Setup creates or preserves `.env` and validates the committed extension files. It does not generate a separate extension folder. A local Git clone is needed; a virtual GitHub repository in VS Code does not run the Node server. Already have a checkout? Follow **Pull updates** below.
 
 On Windows, if PowerShell blocks `npm.ps1`, use `npm.cmd run setup` and `npm.cmd start`, or use Command Prompt. There is no need to change PowerShell's security policy.
 
@@ -42,11 +42,11 @@ In Chrome on **any of the three operating systems**:
 1. Open `chrome://extensions`.
 2. Enable **Developer mode** at the top right.
 3. Click **Load unpacked**.
-4. Select the **dist-extension** folder inside your local `HackNite26` checkout. Select the folder itself, not a ZIP, `extension`, or the repository root.
+4. Select the **extension** folder inside your local `HackNite26` checkout. Select the folder itself, not a ZIP or the repository root.
 5. Open Chrome's extensions menu (the puzzle-piece icon) and pin **Undertone**.
 
-Windows folder example: `C:\Users\YourName\HackNite26\dist-extension`.
-macOS/Linux folder example: your `HackNite26/dist-extension` folder wherever you cloned it. You do not need to move the files to a special location.
+Windows folder example: `C:\Users\YourName\HackNite26\extension`.
+macOS/Linux folder example: your `HackNite26/extension` folder wherever you cloned it. This complete folder is committed to Git and can be loaded directly from a fresh clone.
 
 ## 4. Use the two screens
 
@@ -58,6 +58,8 @@ Text is sent to Gemini when you submit pasted text or click Scan page. The popup
 
 ## 5. Pull updates
 
+Save your local work and stop the running server with **Ctrl+C**, then run:
+
 ```sh
 git pull --ff-only
 npm run setup
@@ -66,23 +68,32 @@ npm test
 
 If your existing `.env` still selects `gemini-2.5-flash`, change that line to `GEMINI_MODEL=gemini-3.8-flash`. Setup preserves local configuration, so pulling alone will not update it. Keep your API key in `.env`; do not commit it.
 
-Restart `npm start`. In `chrome://extensions`, click **Reload** on Undertone. Close old reader tabs and open a fresh one from the popup. The build is local and ignored by Git; every teammate must run setup after pulling changes.
+**Upgrading to 1.2.1 from `dist-extension`:**
+
+1. In `chrome://extensions`, **Remove** the old Undertone installation that was loaded from `dist-extension`.
+2. Choose **Load unpacked**, select the checkout's **extension** folder, and pin Undertone again.
+3. If you set the optional `EXTENSION_ID` in `.env`, replace it with the new ID shown on Undertone's Chrome extension card. Leave it empty if you have not configured this restriction.
+4. Run `npm start`, close old reader tabs, and open a fresh reader from the popup.
+
+Setup disables the legacy `dist-extension` manifest without discarding its files. That folder is retired; use **extension** from now on.
+
+For later updates, restart the server and click **Reload** on Undertone in `chrome://extensions` after pulling. Close old reader tabs and open a fresh one. No generated build or file copy is needed.
 
 ## Audio checks
 
-All eight committed `.wav` files are complete 16-second PCM audio files. They are bundled inside the extension, so playback does not fetch music from GitHub.
+All eight committed `.wav` files in `extension/public/music/` are complete 16-second PCM audio files. They are bundled inside the extension, so playback does not fetch music from GitHub.
 
 - In VS Code, right-click an audio file's editor tab and choose **Reopen Editor With → Audio Preview**. If using a virtual GitHub repository or a restricted preview, clone locally and open the file there.
 - With the server running, open `http://127.0.0.1:8787/public/music/calm.wav` in Chrome to test the native player.
 - Open `http://127.0.0.1:8787` and choose **Try sample text** for a local reader/audio check without an API key. This is a development fallback, not an extra step in the extension flow.
 - If the player says it is playing but you hear nothing, check the tab/site mute control, system output device, and both volume controls. Missing files or decoding failures now give explicit messages.
-- If nothing changed after pulling, rebuild and reload the extension: it uses a copied build, not the source folder.
+- If nothing changed after pulling, confirm Chrome loaded the checkout's **extension** folder, click **Reload**, and open a fresh reader tab. Remove any old Undertone installation loaded from `dist-extension`.
 
 ## Development
 
-`npm test` runs Node's built-in tests. `npm run build` rebuilds the extension. GitHub Actions runs setup, tests and build on Node 22 for Windows, macOS and Linux. Tests mock Gemini and Chrome APIs; live scoring requires an API key and native toolbar testing requires Chrome.
+`npm test` runs Node's built-in tests. `npm run build` validates the complete committed extension; it does not generate a copy. GitHub Actions runs setup, tests and validation on Node 22 for Windows, macOS and Linux. Tests mock Gemini and Chrome APIs; live scoring requires an API key and native toolbar testing requires Chrome.
 
-`extension/` owns the popup, extraction, and background handoff. `reader/` owns reading, scroll tracking and Web Audio. `server/` owns Gemini and local file delivery. `shared/` owns chunking and metadata validation. Bundled WAVs and Mozilla Readability require no installation.
+`extension/` is the complete installable extension: its root owns the popup, extraction and background handoff; `extension/reader/` owns reading, scroll tracking and Web Audio; `extension/public/music/` contains the bundled WAVs. `server/` owns Gemini and local file delivery. `shared/` owns chunking and metadata validation. Bundled WAVs and Mozilla Readability require no installation.
 
 Scans use one structured Gemini request for paragraph selection and emotional scoring. The server validates paragraph IDs and reconstructs text from original paragraphs. Pasted text is scored without page cleanup. Both flows finish before a reader tab is opened. Reader sessions stay in extension session storage to support refresh; restarting Chrome clears them, and only the latest ten sessions are retained.
 

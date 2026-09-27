@@ -4,7 +4,7 @@ from pathlib import Path
 RATE=22050
 DURATION=16
 N=RATE*DURATION
-ROOT=Path(__file__).resolve().parents[1]/'public'/'music'
+ROOT=Path(__file__).resolve().parents[1]/'extension'/'public'/'music'
 # MIDI chords; all loops share a tonal center for harmonious crossfades.
 MOODS={'calm':([48,55,60,64,67],.08),'happy':([48,52,55,60,64],.25),'hopeful':([48,55,59,62,67],.16),'melancholy':([45,52,57,60,64],.10),'mysterious':([45,52,58,59,64],.18),'tense':([45,48,52,58,64],.65),'dark':([33,40,45,46,52],.12),'triumphant':([48,55,60,64,72],.4)}
 ROOT.mkdir(parents=True,exist_ok=True)

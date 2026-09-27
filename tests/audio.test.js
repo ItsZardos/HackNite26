@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 
-const audioURL=new URL('../reader/audio.js',import.meta.url);
+const audioURL=new URL('../extension/reader/audio.js',import.meta.url);
 const audioCode=(await readFile(audioURL,'utf8'))
   .replace('export class AudioEngine','class AudioEngine')
   .replaceAll('import.meta.url',JSON.stringify(audioURL.href));

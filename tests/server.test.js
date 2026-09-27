@@ -24,7 +24,11 @@ test('fresh backend serves reader/music and protects private files on the host O
     let response=await fetch(base+'/');
     assert.equal(response.status,200);
     assert.match(await response.text(),/undertone/);
-    for(const route of ['/.env','/reader/..%5c.env','/reader/%2e%2e%5cserver/index.js','/server/index.js']){
+    response=await fetch(base+'/reader/app.js');
+    assert.equal(response.status,200);
+    assert.equal(response.headers.get('content-type'),'text/javascript');
+    assert.match(await response.text(),/AudioEngine/);
+    for(const route of ['/.env','/local.env','/reader/..%5c.env','/reader/%2e%2e%5cserver/index.js','/reader/..%5cshared/analysis.js','/server/index.js','/shared/analysis.js','/extension/reader/index.html','/scripts/start.js','/package.json']){
       response=await fetch(base+route);assert.equal(response.status,404,route);
     }
     response=await fetch(base+'/api/health',{headers:{Origin:'https://example.org'}});

@@ -32,7 +32,7 @@ function waveChunks(bytes) {
 
 for (const mood of MOODS) {
   test(`${mood}.wav contains a complete, audible 16-second PCM soundtrack`, async () => {
-    const bytes = await readFile(new URL(`../public/music/${mood}.wav`, import.meta.url));
+    const bytes = await readFile(new URL(`../extension/public/music/${mood}.wav`, import.meta.url));
     const chunks = waveChunks(bytes);
     const format = chunks.get('fmt ');
     const data = chunks.get('data');
