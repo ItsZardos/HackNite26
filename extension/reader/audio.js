@@ -25,7 +25,7 @@ export class AudioEngine {
    this.buffers.set(mood, (async () => {
     let response;
     try { response = await fetch(url); }
-    catch { throw new Error('The soundtrack could not be reached. Run npm start and open the reader from the extension or http://127.0.0.1:8787.'); }
+    catch { throw new Error('The soundtrack could not be reached. Pull the complete repository and reload Undertone in chrome://extensions.'); }
     if (!response.ok) throw new Error(`Soundtrack missing (${mood}, HTTP ${response.status}). Pull the latest files, run npm run setup, and reload the extension.`);
     const data = await response.arrayBuffer();
     try { return await this.context.decodeAudioData(data); }
@@ -33,6 +33,12 @@ export class AudioEngine {
    })().catch(error => { this.buffers.delete(mood); throw error; }));
   }
   return this.buffers.get(mood);
+ }
+
+ preload(mood) {
+  // Download the upcoming mood only after the listener has started audio.
+  if (!this.context || !this.playing) return Promise.resolve();
+  return this.buffer(mood).catch(() => {});
  }
 
  async play() {
@@ -82,7 +88,7 @@ export class AudioEngine {
   catch (error) { if (this.playing && generation === this.generation) throw error; return; }
   if (!this.playing || generation !== this.generation) return;
   const now = this.context.currentTime;
-  const duration = this.voices.size ? 4 : .25;
+  const duration = this.voices.size ? 1.8 : .25;
   if (!this.voices.has(mood)) {
    const source = this.context.createBufferSource(), gain = this.context.createGain();
    source.buffer = buffer; source.loop = true; gain.gain.value = 0;
@@ -96,5 +102,6 @@ export class AudioEngine {
     if (key !== this.mood) { this.removeVoice(voice); this.voices.delete(key); }
    }
   }, duration * 1000 + 200);
+  return {duration};
  }
 }

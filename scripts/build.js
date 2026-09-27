@@ -6,8 +6,8 @@ const projectRoot = new URL('../', import.meta.url);
 const requiredFiles = [
   'manifest.json', 'popup.html', 'popup.css', 'popup.js', 'background.js', 'reader-launch.js', 'pdf.js', 'document-file.js', 'document-transfer.js',
   'vendor/Readability.js', 'vendor/LICENSE.md',
-  'reader/index.html', 'reader/app.js', 'reader/style.css', 'reader/audio.js',
-  'public/brand/monkey.png', 'public/brand/mascot.css',
+  'reader/index.html', 'reader/app.js', 'reader/style.css', 'reader/audio.js', 'reader/passages.js',
+  'public/brand/monkey.png', 'public/brand/mascot.css', 'public/brand/mascot.js',
   ...[16, 32, 48, 128].map(size => `public/brand/icon-${size}.png`),
   ...['calm', 'happy', 'hopeful', 'melancholy', 'mysterious', 'tense', 'dark', 'triumphant'].map(mood => `public/music/${mood}.wav`)
 ];

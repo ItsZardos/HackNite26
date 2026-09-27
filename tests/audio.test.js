@@ -114,7 +114,7 @@ test('rapid mood changes start only the latest decoded track',async()=>{
   pending.get('mysterious').resolve({duration:8,mood:'mysterious'});await latest;
   pending.get('tense').resolve({duration:8,mood:'tense'});await older;
   assert.deepEqual(h.sources.filter(source=>source.starts.length).map(source=>source.buffer.mood),['calm','mysterious']);
-  assert.equal(ramps(h.sources[1]).at(-1).time-h.context.currentTime,4);
+  assert.ok(Math.abs(ramps(h.sources[1]).at(-1).time-h.context.currentTime-1.8)<1e-9);
   h.engine.pause();
 });
 
@@ -136,7 +136,7 @@ test('interrupting a crossfade preserves the current audible gain instead of jum
   const firstTarget=ramps(h.sources[0]).at(-1).value;
   await h.engine.setMood('tense',.8);
   const secondTarget=ramps(h.sources[1]).at(-1).value;
-  h.context.currentTime+=2;
+  h.context.currentTime+=.9;
   await h.engine.setMood('mysterious',.4);
   const heldGain=source=>source.connections[0].gain.events.filter(event=>event.type==='set').at(-1).value;
   assert.ok(Math.abs(heldGain(h.sources[0])-firstTarget/2)<1e-9);
@@ -166,7 +166,7 @@ test('an unreachable soundtrack reports recovery instructions and allows retry',
     if(++attempts===1)throw new Error('Failed to fetch');
     return {ok:true,arrayBuffer:async()=>Object.assign(new ArrayBuffer(8),{mood})};
   }});
-  await assert.rejects(h.engine.play(),/npm start|server|connection/i);
+  await assert.rejects(h.engine.play(),/reload|repository|connection/i);
   await h.engine.play();
   assert.equal(h.sources[0].starts.length,1);
   h.engine.pause();
@@ -190,4 +190,13 @@ test('unsupported Web Audio reports an actionable error',async()=>{
   const h=audioHarness({supported:false});
   await assert.rejects(h.engine.play(),/support|available|browser/i);
   assert.equal(h.requests.length,0);
+});
+
+test('prefetch warms the upcoming mood without starting another voice',async()=>{
+ const h=audioHarness();await h.engine.preload('tense');assert.deepEqual(h.requests,[]);
+ await h.engine.play();await h.engine.preload('tense');
+ assert.deepEqual(h.requests,['calm','tense']);assert.equal(h.sources.length,1);
+ const transition=await h.engine.setMood('tense',.7);
+ assert.equal(transition.duration,1.8);assert.deepEqual(h.requests,['calm','tense']);
+ assert.equal(h.sources.length,2);h.engine.pause();
 });

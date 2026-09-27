@@ -72,36 +72,36 @@ h1 {
 .text-button { min-height: 44px; padding: 10px 0; background: transparent; border: 0; border-bottom: 1px solid var(--rule); color: var(--text); font-size: 11px; letter-spacing: .4px; }
 .text-button:hover { color: var(--accent); border-color: var(--accent); }
 
-/* Reading page: a restrained margin column beside warm, legible paper. */
-#reading {
-  max-width: 1280px;
-  margin: 67px auto 0;
-  padding: 0 6% 250px;
-  display: grid;
-  grid-template-columns: minmax(120px, 180px) minmax(0, 680px);
-  column-gap: 7%;
-  row-gap: 28px;
-  justify-content: center;
-}
-article { min-width: 0; }
-article h1 { font-size: clamp(50px, 6vw, 76px); line-height: 1.06; letter-spacing: -2px; margin: 27px 0 23px; }
-#byline { padding-bottom: 35px; border-bottom: 1px solid var(--rule); color: var(--muted); font-size: 11px; line-height: 1.8; }
-#sections section { padding-top: 42px; scroll-margin-top: 20px; }
-#sections p { font-family: var(--serif); font-size: 24px; line-height: 1.75; font-weight: 400; color: #3b3229; margin: 0 0 27px; }
-.section-label { margin-bottom: 23px; font-size: 9px; letter-spacing: 2px; color: var(--accent); }
-.reading-aside { align-self: start; padding-top: 7px; }
-.reading-aside p, #chapter-count { color: var(--muted); font-size: 11px; line-height: 1.9; }
-.aside-rule { height: 1px; width: 36px; background: var(--accent); margin: 26px 0; }
-.end-mark { padding: 47px 0 20px; margin-top: 45px; border-top: 1px solid var(--rule); }
+/* Each scroll snap fills the measured reading window. Text never straddles moods. */
+body.has-reading { height: 100dvh; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; }
+.has-reading header { grid-row: 1; width: 100%; min-height: 76px; }
+#reading { grid-row: 2; width: min(100%, 1000px); min-height: 0; margin: 0 auto; padding: 22px 6% 0; display: flex; flex-direction: column; }
+.reading-heading { flex: 0 0 auto; }
+#article-title { font-size: clamp(25px, 3vw, 40px); line-height: 1.12; letter-spacing: -.8px; margin: 0 0 7px; max-height: 2.3em; overflow: auto; scrollbar-width: none; }
+#byline { color: var(--muted); font-size: 11px; line-height: 1.6; }
+.focus-strip { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 18px 0 11px; border-bottom: 1px solid var(--rule); font-size: 10px; color: var(--muted); }
+#chapter-count { color: var(--accent); white-space: nowrap; }
+#position-hint { text-align: right; }
+.reading-window { position: relative; flex: 1; min-height: 0; }
+#sections { height: 100%; overflow-y: auto; overflow-x: hidden; scroll-snap-type: y mandatory; overscroll-behavior-y: contain; scrollbar-width: thin; scrollbar-color: var(--rule) transparent; }
+#sections:focus-visible { outline: 1px solid var(--accent); outline-offset: 4px; }
+.passage { height: var(--page-height, 100%); padding: 28px 15px 24px 0; scroll-snap-align: start; scroll-snap-stop: always; }
+.passage p { font: 400 clamp(21px, 2.3vw, 25px)/1.65 var(--serif); color: #3b3229; margin: 0 0 20px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.passage p:last-child { margin-bottom: 0; }
+#sections .passage { visibility: hidden; opacity: 0; }
+#sections .passage[data-active=true] { visibility: visible; opacity: 1; animation: passage-arrive 220ms ease-out; }
+#page-measure { position: absolute; top: 0; left: 0; width: 100%; visibility: hidden; pointer-events: none; overflow: hidden; }
+@keyframes passage-arrive { from { opacity: 0; } to { opacity: 1; } }
 
 /* An instrument-like console; live mood colors retain their meaning. */
 #player {
-  position: fixed;
+  grid-row: 3;
+  position: relative;
   z-index: 5;
   bottom: 0;
   left: 0;
   right: 0;
-  padding: 23px 6% 17px;
+  padding: 18px 6% 12px;
   background: var(--console);
   color: var(--bg);
   border-top: 1px solid #94764c;
@@ -162,23 +162,19 @@ input[type=range] { width: 76px; accent-color: #c4a36d; cursor: pointer; }
   header { padding-inline: 86px; }
 }
 @media (max-width: 1050px) {
-  #reading { grid-template-columns: minmax(0, 680px); margin-top: 44px; }
-  .reading-aside { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px 22px; border-bottom: 1px solid var(--rule); padding: 0 0 17px; }
-  .reading-aside p { margin: 0; }
-  .aside-rule { display: none; }
-  #chapter-count { margin-left: auto; }
   .player-top { gap: 23px; }
   .volume { flex-direction: column; gap: 3px; }
 }
 @media (max-width: 760px) {
-  header { min-height: 78px; }
+  header { min-height: 68px; }
+  .has-reading header { min-height: 68px; }
+  #reading { padding-top: 14px; }
+  .passage { padding-top: 20px; padding-bottom: 18px; }
+  .focus-strip { padding-top: 12px; }
   .brand { font-size: 34px; }
   #welcome { padding-top: 36px; padding-bottom: 50px; }
   h1 { font-size: 48px; }
   .eyebrow { font-size: 9px; letter-spacing: 1.65px; }
-  #reading { padding-bottom: 260px; gap: 28px; }
-  article h1 { font-size: 54px; }
-  #sections p { font-size: 23px; line-height: 1.7; }
   .player-top { grid-template-columns: 1fr minmax(0, 1.6fr); gap: 14px 18px; }
   #player { padding: 16px 6% 12px; }
   .volume { flex-direction: row; justify-content: flex-end; grid-column: 2; grid-row: 2; }
@@ -197,8 +193,6 @@ input[type=range] { width: 76px; accent-color: #c4a36d; cursor: pointer; }
 }
 @media (max-width: 390px) {
   h1 { font-size: 44px; }
-  article h1 { font-size: 45px; }
-  #sections p { font-size: 21px; }
   .mood-group { gap: 8px; }
   .mood-group .tiny { font-size: 7px; letter-spacing: 1px; }
   .player-top { gap: 12px; }
@@ -207,5 +201,23 @@ input[type=range] { width: 76px; accent-color: #c4a36d; cursor: pointer; }
 }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
+  #sections .passage { animation: none !important; }
   *, *::before, *::after { transition: none !important; }
+}
+
+@media (max-height: 620px) {
+ .has-reading header { min-height: 54px; }
+ .has-reading header .mascot { width: 42px; height: 42px; }
+ #reading { padding-top: 8px; }
+ #article-title { font-size: 24px; max-height: 1.2em; }
+ .focus-strip { padding-block: 6px; }
+ .passage { padding-block: 12px; }
+ .passage p { font-size: 20px; line-height: 1.5; }
+ #player { padding-block: 9px; }
+ #timeline { margin-top: 8px; }
+}
+@media (max-height: 400px) {
+ .has-reading header { display: none; }
+ .reading-heading, #timeline, .volume, .progress-copy { display: none; }
+ #player .player-top { display: flex; justify-content: space-between; }
 }

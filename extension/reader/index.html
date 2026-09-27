@@ -10,7 +10,7 @@
 </head>
 <body>
   <header>
-    <span class="brand brand-lockup"><img class="mascot" src="../public/brand/monkey.png" alt="" width="56" height="56"><span>undertone<span class="brand-dot">.</span></span></span>
+    <span class="brand brand-lockup"><button class="mascot-toggle" type="button" aria-label="Pause mascot animation" aria-pressed="true" title="Pause mascot animation"><img class="mascot" src="../public/brand/monkey.png" alt="" width="56" height="56"></button><span>undertone<span class="brand-dot">.</span></span></span>
     <div class="header-right"><button id="exit" class="text-button" hidden>New text</button></div>
   </header>
 
@@ -21,19 +21,15 @@
   </main>
 
   <main id="reading" hidden>
-    <aside class="reading-aside">
-      <div class="eyebrow">NOW READING</div>
-      <p id="source-label"></p>
-      <div class="aside-rule"></div>
-      <div id="chapter-count"></div>
-    </aside>
-    <article>
-      <div id="article-type" class="eyebrow"></div>
+    <div class="reading-heading">
       <h1 id="article-title"></h1>
       <div id="byline"></div>
-      <div id="sections"></div>
-      <div class="end-mark"><button id="another" class="text-button">New text</button></div>
-    </article>
+    </div>
+    <div class="focus-strip"><span id="chapter-count"></span><span id="position-hint">Scroll to continue</span></div>
+    <div class="reading-window">
+      <article id="sections" tabindex="0" aria-label="Reading passages" aria-describedby="position-hint"></article>
+      <div id="page-measure" class="passage" aria-hidden="true"></div>
+    </div>
   </main>
 
   <div id="message" role="status" aria-live="polite" hidden></div>
@@ -49,10 +45,11 @@
         <div><span id="play-status" role="status" aria-live="polite">Press play to start</span><small id="music-direction">Original ambient score</small></div>
       </div>
       <label class="volume">Volume <input id="volume" type="range" min="0" max="100" value="55"></label>
-      <div class="progress-copy"><span id="progress">0%</span><small>THROUGH THE STORY</small></div>
+      <div class="progress-copy"><span id="progress">1 / 1</span><small>PASSAGE</small></div>
     </div>
     <nav id="timeline" aria-label="Emotional journey"></nav>
   </footer>
   <script type="module" src="app.js"></script>
+  <script type="module" src="../public/brand/mascot.js"></script>
 </body>
 </html>

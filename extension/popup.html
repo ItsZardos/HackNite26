@@ -9,7 +9,7 @@
   <link rel="icon" type="image/png" href="public/brand/icon-32.png">
 </head>
 <body>
-  <header class="brand-lockup"><img class="mascot" src="public/brand/monkey.png" alt="" width="72" height="72"><span class="wordmark">undertone<span>.</span></span></header>
+  <header class="brand-lockup"><button class="mascot-toggle" type="button" aria-label="Pause mascot animation" aria-pressed="true" title="Pause mascot animation"><img class="mascot" src="public/brand/monkey.png" alt="" width="72" height="72"></button><span class="wordmark">undertone<span>.</span></span></header>
   <main aria-label="Prepare a reader">
    <div id="choices">
     <button id="paste" type="button" aria-expanded="false" aria-controls="paste-form">
@@ -45,5 +45,6 @@
   </details>
   <p class="privacy">Files are read locally. Extracted text is sent to Gemini to prepare your reader.</p>
   <script type="module" src="popup.js"></script>
+  <script type="module" src="public/brand/mascot.js"></script>
 </body>
 </html>
