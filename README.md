@@ -1,39 +1,61 @@
 # HackNite26 · Undertone
 
-A Chrome extension that gives written stories an adaptive instrumental soundtrack. Gemini scores the emotional arc; the music follows the section you are reading.
+A Chrome extension that turns reading into an adaptive instrumental soundtrack. Paste or scan in the toolbar popup; open the finalized text directly in a full reader.
 
-## Team quick start
+Use **Google Chrome**, **Git**, and **Node.js 22 or newer with npm** on Windows, macOS, or Linux. Each teammate runs the local server on their own computer. The extension is not installed by signing into GitHub or opening a repository in VS Code.
 
-Install **Node.js 22 or newer (including npm)**, **Git**, and **Google Chrome**. The same commands work in Windows PowerShell, macOS Terminal, and Linux:
+## 1. Get the files
+
+Open **PowerShell / Command Prompt on Windows**, or **Terminal on macOS / Linux**:
 
 ```sh
 git clone https://github.com/ItsZardos/HackNite26.git
 cd HackNite26
 npm run setup
+```
+
+Already have a checkout? Save your local work, then run `git pull --ff-only` and `npm run setup` in its folder. A local Git clone is needed; a virtual GitHub repository in VS Code does not run the Node server.
+
+On Windows, if PowerShell blocks `npm.ps1`, use `npm.cmd run setup` and `npm.cmd start`, or use Command Prompt. There is no need to change PowerShell's security policy.
+
+## 2. Add your Gemini key and start the server
+
+Setup creates `.env` without replacing an existing one. Open it in VS Code and set:
+
+```dotenv
+GEMINI_API_KEY=your_key_here
+```
+
+Use your own key from [Google AI Studio](https://aistudio.google.com/apikey). Keep `PORT=8787` and leave `EXTENSION_ID` empty for team development. Never commit or send your `.env` to GitHub.
+
+```sh
 npm start
 ```
 
-`npm run setup` creates a local `.env` without overwriting an existing one, validates the bundled assets, and builds `dist-extension`. All required JavaScript libraries and eight audio loops are included. There are no npm dependencies to install, and Python is not required to run the app.
+Leave that terminal running. It should print `Undertone ready at http://127.0.0.1:8787`. Restart it whenever you change `.env` or server code. No npm dependencies or Python installation are needed to run Undertone.
 
-Open **http://127.0.0.1:8787**. Choose **Experience a story** to try the complete reader and soundtrack without an API key. The sample is clearly labeled as a curated score.
+## 3. Install the extension
 
-For live analysis, open `.env` in your editor, add your own `GEMINI_API_KEY`, and restart `npm start`. Keep `PORT=8787` for the extension. Never commit your key or share `.env` through GitHub. Each teammate runs their own local backend and keeps their credentials on their own machine.
+In Chrome on **any of the three operating systems**:
 
-## Load the extension
+1. Open `chrome://extensions`.
+2. Enable **Developer mode** at the top right.
+3. Click **Load unpacked**.
+4. Select the **dist-extension** folder inside your local `HackNite26` checkout. Select the folder itself, not a ZIP, `extension`, or the repository root.
+5. Open Chrome's extensions menu (the puzzle-piece icon) and pin **Undertone**.
 
-1. Open `chrome://extensions` in Chrome and enable **Developer mode**.
-2. Choose **Load unpacked** and select the `dist-extension` folder inside your checkout.
-3. Pin Undertone using Chrome's extensions menu.
-4. Click Undertone's toolbar icon to open its small menu.
-5. Choose **Paste text** for a blank full-page reader, or **Scan page** to extract the current article into the reader.
-6. Review the text and choose **Compose my reading experience** to send it to Gemini.
-7. Press play. Scroll in either direction, or click the emotional timeline.
+Windows folder example: `C:\Users\YourName\HackNite26\dist-extension`.
+macOS/Linux folder example: your `HackNite26/dist-extension` folder wherever you cloned it. You do not need to move the files to a special location.
 
-The popup closes as the reader tab opens. The background worker completes extraction and the handoff independently. Paste text does not inspect your current tab or read the clipboard.
+## 4. Use the two screens
 
-## Pull teammates' updates
+**Screen 1 — toolbar popup.** Click Undertone's pinned icon. Choose **Paste text**, paste inside that popup, then choose **Open reader**. Or choose **Scan page** on an article: Readability extracts text, and Gemini removes obvious navigation, ads, cookie notices, and other page furniture while scoring the retained text. Gemini selects original paragraphs rather than rewriting them.
 
-Save or commit your own work before pulling. From your checkout:
+**Screen 2 — full reader tab.** After the text and soundtrack score are ready, the extension opens the full reader directly. There is no home page or intermediate entry form. Press **Play** and scroll to change the music. **New text** reopens the popup when supported; otherwise click the toolbar icon again.
+
+Text is sent to Gemini when you submit pasted text or click Scan page. The popup shows progress and errors. A missing key or unreadable page leaves the popup open so you can retry or paste manually. Pages such as `chrome://` and the Chrome Web Store cannot be scanned.
+
+## 5. Pull updates
 
 ```sh
 git pull --ff-only
@@ -41,82 +63,36 @@ npm run setup
 npm test
 ```
 
-Then click **Reload** on Undertone in `chrome://extensions`, and open a new reader tab from the popup. Restart `npm start` when server code or `.env` settings change. Setup preserves your existing `.env`; compare new `.env.example` fields when configuration changes.
+Restart `npm start`. In `chrome://extensions`, click **Reload** on Undertone. Close old reader tabs and open a fresh one from the popup. The build is local and ignored by Git; every teammate must run setup after pulling changes.
 
-For your own feature work, create a branch, commit your source changes, and open a pull request. `dist-extension` is generated and ignored by Git; teammates regenerate it locally.
+## Audio checks
 
-## Commands
+All eight committed `.wav` files are complete 16-second PCM audio files. They are bundled inside the extension, so playback does not fetch music from GitHub.
 
-| Command | Purpose |
-| --- | --- |
-| `npm run setup` | Create local settings if missing and build the extension |
-| `npm start` | Run the local backend and web reader |
-| `npm test` | Run unit/contract tests with Node's built-in runner |
-| `npm run build` | Validate assets and rebuild `dist-extension` |
-| `npm run music` | Optional: regenerate music with Python 3 (`python3`) |
+- In VS Code, right-click an audio file's editor tab and choose **Reopen Editor With → Audio Preview**. If using a virtual GitHub repository or a restricted preview, clone locally and open the file there.
+- With the server running, open `http://127.0.0.1:8787/public/music/calm.wav` in Chrome to test the native player.
+- Open `http://127.0.0.1:8787` and choose **Try sample text** for a local reader/audio check without an API key. This is a development fallback, not an extra step in the extension flow.
+- If the player says it is playing but you hear nothing, check the tab/site mute control, system output device, and both volume controls. Missing files or decoding failures now give explicit messages.
+- If nothing changed after pulling, rebuild and reload the extension: it uses a copied build, not the source folder.
 
-On Windows, optional music regeneration can also use `py -3 scripts/generate_music.py`. The committed WAVs are ready to use. `launch.command` is an optional macOS launcher for an installed Node runtime; the npm commands are the shared team workflow.
+## Development
 
-## Included
+`npm test` runs Node's built-in tests. `npm run build` rebuilds the extension. GitHub Actions runs setup, tests and build on Node 22 for Windows, macOS and Linux. Tests mock Gemini and Chrome APIs; live scoring requires an API key and native toolbar testing requires Chrome.
 
-- Manifest V3 toolbar popup with Paste text and Scan page.
-- Mozilla Readability 0.6.0, bundled locally; main/body fallback and manual paste.
-- Responsive luxury-style reader, eight moods, intensity, progress, timeline, volume, and play/pause.
-- Paragraph-aware sections targeting 250–500 words. Final sections may be shorter; very long paragraphs are split.
-- Gemini structured JSON with exact section coverage, bounded metadata, timeouts and useful errors.
-- Eight original instrumental loops and four-second Web Audio crossfades. Latest scroll position wins during audio loading.
-- Original short story and curated score for an offline extension demo. The web reader needs the local server to serve its files.
-- Reduced motion, keyboard focus, and plain-text article rendering.
+`extension/` owns the popup, extraction, and background handoff. `reader/` owns reading, scroll tracking and Web Audio. `server/` owns Gemini and local file delivery. `shared/` owns chunking and metadata validation. Bundled WAVs and Mozilla Readability require no installation.
 
-## Architecture
+Scans use one structured Gemini request for paragraph selection and emotional scoring. The server validates paragraph IDs and reconstructs text from original paragraphs. Pasted text is scored without page cleanup. Both flows finish before a reader tab is opened. Reader sessions stay in extension session storage to support refresh; restarting Chrome clears them, and only the latest ten sessions are retained.
 
-```
-Toolbar popup → Scan page → worker → Readability → session storage → reader
-              → Paste text → worker → blank reader
-Reader → local Node backend → chunking → Gemini → validated emotional score
-Viewport center → active section → visual mood + soundtrack crossfade
-```
+The backend binds to loopback, validates Host/Origin and static paths, and limits request sizes/concurrency. Keys remain server-side. A streaming JSON response starts promptly while analysis runs so the extension worker can wait for Gemini. Audio endpoints support lengths, HEAD and byte ranges for native players. Music starts with a short fade and changes moods with four-second crossfades.
 
-`extension/` contains the popup and worker. `reader/` contains browser ES modules. `server/` uses Node HTTP/fetch. `shared/` owns chunking and validation. `scripts/` handles setup and packaging. The extension build contains only browser assets, never the server or `.env`.
+`npm run music` optionally regenerates the original loops with Python 3; on Windows use `py -3 scripts/generate_music.py` if `python3` is not available. The committed files are ready to play. `launch.command` is an optional macOS shortcut; the npm commands are the supported shared workflow.
 
-## Troubleshooting
+No Raspberry Pi components are included. Music is original synthesized audio, not Lyria. The sample story uses a labeled curated score. Lyria RealTime is a stretch goal.
 
-- **Sample works, live analysis does not:** set `GEMINI_API_KEY` in `.env`, restart the server, and check the key's Gemini API access/quota. `GEMINI_MODEL` is configurable in `.env`.
-- **Reader cannot reach server:** keep `npm start` running and use port 8787. The browser audio play button requires a user gesture.
-- **Address already in use:** use the existing Undertone server or stop its terminal with Ctrl+C before starting another.
-- **Chrome rejects the folder:** load `dist-extension`, not the repository root or `extension` source directory. Run `npm run setup` first.
-- **Old popup still appears:** rebuild, click Reload in Chrome's extension manager, then open a fresh reader.
-- **Scan fails:** Chrome internal pages, the Web Store, local files, and some protected sites cannot be extracted. Use Paste text. Extraction is capped at 100,000 characters.
-- **Refreshing a scanned reader loses text:** extraction is a one-time session handoff. Scan again or paste it. Source text is not stored permanently.
-- **Pull cannot fast-forward:** preserve your commits and resolve the diverged branch with your team; do not discard teammates' work.
+## History and licenses
 
-## Security and privacy
+The original starter README is preserved on [archive/pre-undertone-2026-09-27](https://github.com/ItsZardos/HackNite26/tree/archive/pre-undertone-2026-09-27), and in Git history.
 
-No accounts or database. Text goes to Gemini only after the explicit compose action. The app does not log article bodies. The key remains server-side. `.gitignore` excludes `.env`, dependencies, generated extension files and logs.
+Original code, sample story, and generated music: MIT (see LICENSE). Mozilla Readability 0.6.0: Apache 2.0, preserved in `extension/vendor/LICENSE.md`.
 
-The backend binds to loopback, validates Host/Origin and static paths, limits request sizes/concurrency, and rate-limits analysis. `EXTENSION_ID` can optionally restrict access to your installed extension's ID; leave it empty for local team development because IDs may differ between checkouts. This is a local hackathon backend, not an authenticated public service. Review Google's API terms before using sensitive material.
-
-## Verification
-
-GitHub Actions runs setup, tests, and extension build on Node 22 for Windows, macOS and Linux. Tests mock Gemini and Chrome APIs; real Gemini needs your key. Browser-rendered UI has been checked, but each teammate should verify the native toolbar flow after loading the extension:
-
-Paste → reader; Scan article → reader; compose → play; scroll forward/back; pause/resume; change volume; try a restricted page and use the fallback.
-
-## Demo and scope
-
-“Movies use music to establish emotion, tension, and atmosphere. Undertone gives written stories the same capability. Gemini understands the emotional progression, and your scroll position controls the soundtrack.”
-
-Demonstrate the live extraction/analysis flow, or identify the curated sample when using it. Its journey is calm → mysterious → tense → dark → hopeful. Allow four seconds for crossfades.
-
-Music is original synthesized audio generated by `scripts/generate_music.py`, not Lyria. Lyria RealTime is an unimplemented stretch goal. No Raspberry Pi components are included.
-
-## Previous repository content
-
-The starter repository contained a single README at [commit 42a128d](https://github.com/ItsZardos/HackNite26/commit/42a128dcd8c4b1db89ccfdacfabfaeb30da3c913). Publish Undertone as a normal descendant commit so the original remains recoverable in Git history.
-
-## References and licensing
-
-- [Chrome popup](https://developer.chrome.com/docs/extensions/develop/ui/add-popup), [activeTab](https://developer.chrome.com/docs/extensions/develop/concepts/activeTab), [messaging](https://developer.chrome.com/docs/extensions/develop/concepts/messaging).
-- [Gemini structured output](https://ai.google.dev/gemini-api/docs/structured-output).
-- [Mozilla Readability](https://github.com/mozilla/readability), Apache 2.0; license preserved in `extension/vendor/LICENSE.md`.
-- Original project code, story and generated music: MIT; see LICENSE.
+References: [Chrome popup](https://developer.chrome.com/docs/extensions/develop/ui/add-popup), [activeTab](https://developer.chrome.com/docs/extensions/develop/concepts/activeTab), [Gemini structured output](https://ai.google.dev/gemini-api/docs/structured-output), [Mozilla Readability](https://github.com/mozilla/readability).

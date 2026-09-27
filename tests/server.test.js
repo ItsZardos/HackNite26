@@ -32,8 +32,46 @@ test('fresh backend serves reader/music and protects private files on the host O
     for(const mood of ['calm','happy','hopeful','melancholy','mysterious','tense','dark','triumphant']){
       response=await fetch(`${base}/public/music/${mood}.wav`);assert.equal(response.status,200);
       const data=Buffer.from(await response.arrayBuffer());assert.equal(data.toString('ascii',0,4),'RIFF');assert.ok(data.length>700000);
+      assert.equal(response.headers.get('content-type'),'audio/wav');
+      assert.equal(response.headers.get('content-length'),String(data.length));
+      assert.equal(response.headers.get('accept-ranges'),'bytes');
+    }
+    const musicURL=base+'/public/music/calm.wav';
+    const complete=Buffer.from(await (await fetch(musicURL)).arrayBuffer());
+    for(const headers of [{},{Range:'bytes=0-43'}]){
+      response=await fetch(musicURL,{method:'HEAD',headers});
+      assert.equal(response.status,200);
+      assert.equal(response.headers.get('content-type'),'audio/wav');
+      assert.equal(response.headers.get('content-length'),String(complete.length));
+      assert.equal(response.headers.get('accept-ranges'),'bytes');
+      assert.equal(response.headers.get('content-range'),null);
+      assert.equal((await response.arrayBuffer()).byteLength,0,'HEAD must not send a body');
+    }
+    const ranges=[
+      ['bytes=0-43',0,43],
+      ['bytes=-32',complete.length-32,complete.length-1],
+      [`bytes=${complete.length-16}-`,complete.length-16,complete.length-1],
+      [`bytes=${complete.length-16}-${complete.length+100}`,complete.length-16,complete.length-1],
+      [`bytes=-${complete.length+100}`,0,complete.length-1]
+    ];
+    for(const [range,start,end] of ranges){
+      response=await fetch(musicURL,{headers:{Range:range}});
+      assert.equal(response.status,206,range);
+      assert.equal(response.headers.get('content-type'),'audio/wav');
+      assert.equal(response.headers.get('content-range'),`bytes ${start}-${end}/${complete.length}`);
+      assert.equal(response.headers.get('content-length'),String(end-start+1));
+      assert.deepEqual(Buffer.from(await response.arrayBuffer()),complete.subarray(start,end+1),range);
+    }
+    for(const range of [`bytes=${complete.length}-`,'bytes=10-9','bytes=-0','bytes=oops','bytes=-','bytes=0-1,4-5','bytes=9007199254740992-']){
+      response=await fetch(musicURL,{headers:{Range:range}});
+      assert.equal(response.status,416,range);
+      assert.equal(response.headers.get('content-range'),`bytes */${complete.length}`);
+      assert.equal(response.headers.get('content-length'),'0');
+      assert.equal((await response.arrayBuffer()).byteLength,0);
     }
     response=await fetch(base+'/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:'A calm morning by the sea. '.repeat(30)})});
     assert.equal(response.status,503);assert.match((await response.json()).error,/GEMINI_API_KEY/);
+    response=await fetch(base+'/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:'A calm morning by the sea. '.repeat(30),scan:true,stream:true})});
+    assert.equal(response.status,200);assert.match((await response.json()).error,/GEMINI_API_KEY/);
   } finally { server.kill(); }
 });

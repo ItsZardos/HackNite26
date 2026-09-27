@@ -3,68 +3,20 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Undertone — Give the story a score</title>
+  <title>Undertone Reader</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <header>
-    <a class="brand" href="index.html" aria-label="Undertone home">undertone<span class="brand-dot">.</span></a>
-    <div class="header-right"><button id="exit" class="text-button" hidden>← Library</button></div>
+    <a class="brand" href="index.html" aria-label="Undertone reader">undertone<span class="brand-dot">.</span></a>
+    <div class="header-right"><button id="exit" class="text-button" hidden>New text</button></div>
   </header>
 
   <main id="welcome">
-    <div class="hero-copy">
-      <div class="eyebrow">A SOUNDTRACK FOR YOUR IMAGINATION</div>
-      <h1>Every story<br>has an <em>undertone.</em></h1>
-      <p class="intro">Hear it unfold. An immersive reader that turns the emotional arc of your words into a cinematic score.</p>
-      <div class="hero-actions">
-        <button id="demo" class="primary">Experience a story <span aria-hidden="true">↗</span></button>
-        <a href="#paste" class="quiet-link">Bring your own words ↓</a>
-      </div>
-    </div>
-
-    <div class="soundscape" aria-hidden="true">
-      <div class="score-sheet">
-        <svg class="score-engraving" viewBox="0 0 360 450" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <g class="engraving-rules">
-            <path d="M32 90H328 M32 144H328 M32 198H328 M32 252H328 M32 306H328 M32 360H328"/>
-            <path d="M72 48V404 M180 48V404 M288 48V404"/>
-          </g>
-          <g class="engraving-lines">
-            <path d="M32 240C82 240 81 215 121 215S153 84 180 84 199 327 231 327 279 202 328 202"/>
-            <path d="M32 246C82 246 81 221 121 221S153 108 180 108 199 315 231 315 279 208 328 208"/>
-            <path d="M32 252C82 252 81 227 121 227S153 132 180 132 199 303 231 303 279 214 328 214"/>
-            <path d="M32 258C82 258 81 233 121 233S153 156 180 156 199 291 231 291 279 220 328 220"/>
-            <path d="M32 264C82 264 81 239 121 239S153 180 180 180 199 279 231 279 279 226 328 226"/>
-            <path d="M32 270C82 270 81 245 121 245S153 204 180 204 199 267 231 267 279 232 328 232"/>
-          </g>
-          <circle class="engraving-point" cx="180" cy="84" r="4"/>
-          <path class="engraving-tick" d="M174 48H186 M174 404H186"/>
-        </svg>
-        <div class="score-caption"><span>CALM</span><span>MYSTERY</span><span>HOPE</span></div>
-      </div>
-    </div>
-
-    <div class="feature-row">
-      <span><b>01</b> Find a story</span>
-      <span><b>02</b> Discover its emotional arc</span>
-      <span><b>03</b> Let the music follow</span>
-    </div>
-
-    <section id="paste" class="paste-panel">
-      <div class="paste-intro">
-        <h2 id="entry-title" tabindex="-1">Set the scene.</h2>
-        <p id="entry-copy">Paste an article, a chapter, or something you wrote.</p>
-        <small>Scoring sends this text to Google Gemini. Your API key stays on the local server.</small>
-      </div>
-      <form id="form">
-        <label for="title">Story title</label>
-        <input id="title" placeholder="An untitled adventure" maxlength="200">
-        <label for="text">Reading text</label>
-        <textarea id="text" placeholder="It began on a morning like any other…" minlength="80" maxlength="100000" required></textarea>
-        <button id="analyze" class="primary" type="submit">Compose my reading experience ↗</button>
-      </form>
-    </section>
+    <div class="eyebrow">READER</div>
+    <h1 id="entry-title" tabindex="-1">Open a text.</h1>
+    <p id="entry-copy">Open Undertone from your browser toolbar, then choose Paste text or Scan page.</p>
+    <button id="demo" class="text-button" type="button" hidden>Try sample text</button>
   </main>
 
   <main id="reading" hidden>
@@ -79,7 +31,7 @@
       <h1 id="article-title"></h1>
       <div id="byline"></div>
       <div id="sections"></div>
-      <div class="end-mark"><button id="another" class="text-button">Choose another story ↗</button></div>
+      <div class="end-mark"><button id="another" class="text-button">New text</button></div>
     </article>
   </main>
 
@@ -93,7 +45,7 @@
       </div>
       <div class="playback">
         <button id="play" aria-label="Play soundtrack">▶</button>
-        <div><span id="play-status">Ready when you are</span><small id="music-direction">Original ambient score</small></div>
+        <div><span id="play-status" role="status" aria-live="polite">Press play to start</span><small id="music-direction">Original ambient score</small></div>
       </div>
       <label class="volume">Volume <input id="volume" type="range" min="0" max="100" value="55"></label>
       <div class="progress-copy"><span id="progress">0%</span><small>THROUGH THE STORY</small></div>

@@ -12,4 +12,4 @@ try {
   console.log('Kept your existing .env unchanged.');
 }
 await import('./build.js');
-console.log('Ready. Run npm start, then open http://127.0.0.1:8787. The sample works without an API key.');
+console.log('Ready. Add your Gemini key to .env, run npm start, then load dist-extension in chrome://extensions and pin Undertone.');
