@@ -181,16 +181,38 @@ test('extensionless PDF content detection gives the import instruction without s
  await assert.rejects(launch(h,{mode:'scan',tabId:17}),{code:'SCAN_IMPORT_REQUIRED'});
  assert.ok(!h.calls.some(c=>['download','analyze','create'].includes(c[0])));
 });
-test('imported document text skips webpage cleanup and opens only after scoring',async()=>{
- const h=mockChrome();await launch(h,{mode:'import',text:readingText,title:'Story.docx'});
- assert.equal(JSON.parse(h.calls[0][2].body).scan,undefined);
- assert.equal(h.stored['undertone-article-one'].title,'Story.docx');
- assert.equal(h.calls.at(-1)[0],'create');
+for(const extension of ['pdf','docx'])test('popup '+extension+' import extracts and scores before creating its only tab',async()=>{
+ const h=mockChrome(),requests=[];
+ const file={name:'Story.'+extension,base64:btoa(extension==='pdf'?'%PDF-1.4 test':'PKtest')};
+ const fetcher=async(url,options)=>{
+  requests.push(url);
+  assert.ok(!h.calls.some(c=>c[0]==='create'));
+  if(url.endsWith('-text'))return Response.json({text:readingText});
+  assert.equal(JSON.parse(options.body).scan,undefined);return Response.json(score);
+ };
+ await launch(h,{mode:'import',file},'import',fetcher);
+ assert.equal(requests.length,2);assert.ok(requests[0].endsWith('/api/'+extension+'-text'));
+ assert.equal(h.stored['undertone-article-import'].title,file.name);
+ assert.deepEqual(h.calls.filter(c=>c[0]==='create'),[['create',{url:'chrome-extension://test/reader/index.html?article=undertone-article-import'}]]);
 });
-
-test('import opens reader in a normal browser window instead of the compact importer',async()=>{
- const h=mockChrome();h.api.windows={getLastFocused:async options=>{assert.deepEqual(options,{windowTypes:['normal']});return {id:22};}};
- await launch(h,{mode:'import',text:readingText});assert.equal(h.calls.at(-1)[1].windowId,22);
+test('failed file extraction cannot score, store or open a reader',async()=>{
+ const h=mockChrome();let requests=0;
+ await assert.rejects(launch(h,{mode:'import',file:{name:'bad.pdf',base64:btoa('%PDF-1.4 bad')}},'bad',async()=>{
+  requests++;return Response.json({error:'No readable text.',code:'PDF_NO_TEXT'},{status:422});
+ }),error=>error.code==='PDF_NO_TEXT'&&!JSON.stringify(error.diagnostic).includes('base64'));
+ assert.equal(requests,1);assert.equal(h.calls.length,0);
+});
+test('worker stays active during document extraction as well as scoring',async t=>{
+ t.mock.timers.enable({apis:['setInterval']});
+ const h=mockChrome();let finish,heartbeats=0;
+ h.api.runtime.getPlatformInfo=async()=>{heartbeats++;};
+ const pending=launch(h,{mode:'import',file:{name:'Story.pdf',base64:btoa('%PDF-1.4 test')}},'slow',async url=>{
+  if(url.endsWith('-text'))return new Promise(resolve=>{finish=()=>resolve(Response.json({text:readingText}));});
+  return Response.json(score);
+ });
+ await new Promise(resolve=>setImmediate(resolve));t.mock.timers.tick(20000);await Promise.resolve();
+ assert.equal(heartbeats,1);assert.equal(h.calls.length,0);
+ finish();await pending;t.mock.timers.tick(40000);await Promise.resolve();assert.equal(heartbeats,1);
 });
 
 for(const extension of ['pdf','docx'])test('local '+extension+' scan automatically reads bytes then scores before opening',async()=>{

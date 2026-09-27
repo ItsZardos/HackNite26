@@ -5,9 +5,9 @@ import {readFile} from 'node:fs/promises';
 
 const popupCode=(await readFile(new URL('../extension/popup.js',import.meta.url),'utf8')).replace(/^import .*;\n/, '');
 const readingText='The sea lay still beneath the lighthouse. '.repeat(12);
-function popupHarness({query=async()=>[{id:42}],send=async()=>({ok:true}),saved={},createWindow=async()=>({id:7})}={}){
-  const elements=Object.fromEntries(['import-file','paste','scan','status','choices','paste-form','text','back','open-reader','debug','debug-report','copy-debug'].map(id=>[id,{
-    disabled:false,hidden:['status','paste-form'].includes(id),textContent:'',value:'',focused:false,
+function popupHarness({query=async()=>[{id:42}],send=async()=>({ok:true}),saved={},encodeDocument=async file=>({name:file.name,base64:'JVBERi0='})}={}){
+  const elements=Object.fromEntries(['import-file','import-form','document-file','read-file','import-back','paste','scan','status','choices','paste-form','text','back','open-reader','debug','debug-report','copy-debug'].map(id=>[id,{
+    disabled:false,hidden:['status','paste-form','import-form'].includes(id),textContent:'',value:'',files:[],focused:false,
     addEventListener(event,callback){this[event]=callback;},
     setAttribute(name,value){this[name]=value;},
     focus(){this.focused=true;}
@@ -15,12 +15,14 @@ function popupHarness({query=async()=>[{id:42}],send=async()=>({ok:true}),saved=
   const messages=[],logs=[],clipboard=[];let closed=0,queries=0;
   vm.runInNewContext(popupCode,{
     document:{getElementById:id=>elements[id]},
-    chrome:{windows:{create:createWindow},storage:{session:{get:async()=>saved}},tabs:{query:async args=>{queries++;return query(args);}},runtime:{getURL:path=>'chrome-extension://test/'+path,getManifest:()=>({version:'1.2.3'}),sendMessage:async msg=>{messages.push({...msg});return send(msg);}}},
+    encodeDocument,
+    chrome:{storage:{session:{get:async()=>saved}},tabs:{query:async args=>{queries++;return query(args);}},runtime:{getURL:path=>'chrome-extension://test/'+path,getManifest:()=>({version:'1.2.3'}),sendMessage:async msg=>{messages.push({...msg});return send(msg);}}},
     console:{error:(...args)=>logs.push(args)}, navigator:{clipboard:{writeText:async text=>clipboard.push(text)}},
     window:{close:()=>closed++}
   });
   return {elements,messages,logs,clipboard,get closed(){return closed;},get queries(){return queries;},
-    submit:()=>elements['paste-form'].submit({preventDefault(){}})
+    submit:()=>elements['paste-form'].submit({preventDefault(){}}),
+    import:()=>elements['import-form'].submit({preventDefault(){}})
   };
 }
 
@@ -135,22 +137,35 @@ test('worker stores the last diagnostic and clears it after a successful handoff
 });
 
 
-test('Import file opens a persistent extension window instead of clicking a hidden input',async()=>{
- const windows=[];const h=popupHarness({createWindow:async options=>{windows.push(options);}});
- await h.elements['import-file'].click();
- assert.equal(windows.length,1);assert.equal(windows[0].url,'chrome-extension://test/import.html');
- assert.equal(windows[0].type,'popup');assert.equal(h.closed,1);
+test('Import file expands inside the popup without creating a window or sending a request',async()=>{
+ const h=popupHarness();await h.elements['import-file'].click();
+ assert.equal(h.elements['import-form'].hidden,false);assert.equal(h.elements.choices.hidden,true);
+ assert.equal(h.elements['document-file'].focused,true);assert.equal(h.closed,0);
  assert.equal(h.messages.length,0);assert.equal(h.queries,0);
 });
-test('blocked import window reports failure and allows retry',async()=>{
- const h=popupHarness({createWindow:async()=>{throw new Error('Blocked');}});
- await h.elements['import-file'].click();
- assert.equal(h.closed,0);assert.equal(h.elements['import-file'].disabled,false);
- assert.match(h.elements.status.textContent,/Could not open the importer/);
+test('import Back returns to the menu and preserves the selected file',async()=>{
+ const h=popupHarness(),file={name:'Story.docx'};
+ h.elements['import-file'].click();h.elements['document-file'].files=[file];h.elements['import-back'].click();
+ assert.equal(h.elements['import-form'].hidden,true);assert.equal(h.elements.choices.hidden,false);
+ assert.equal(h.elements['import-file'].hidden,false);assert.equal(h.elements['document-file'].files[0],file);
 });
-
-test('worker accepts finalized text from its import window',async()=>{
+test('worker rejects the retired import window',async()=>{
  let launched=0;const handler=await workerHarness(async()=>{launched++;});
- const response=await new Promise(resolve=>handler({type:'open-reader',mode:'import',text:readingText},{id:'test',url:'chrome-extension://test/import.html'},resolve));
- assert.equal(response.ok,true);assert.equal(launched,1);
+ assert.equal(handler({type:'open-reader',mode:'import',text:readingText},{id:'test',url:'chrome-extension://test/import.html'},()=>{}),undefined);
+ assert.equal(launched,0);
+});
+test('import sends a JSON-safe file to the worker and waits for the completed reader',async()=>{
+ let finish;const h=popupHarness({send:()=>new Promise(resolve=>{finish=resolve;})});
+ h.elements['import-file'].click();h.elements['document-file'].files=[{name:'Story.pdf'}];
+ const pending=h.import();await new Promise(resolve=>setImmediate(resolve));await h.import();
+ assert.equal(h.messages.length,1);assert.equal(h.closed,0);assert.equal(h.elements['read-file'].disabled,true);
+ assert.deepEqual(JSON.parse(JSON.stringify(h.messages[0])),{type:'open-reader',mode:'import',file:{name:'Story.pdf',base64:'JVBERi0='}});
+ finish({ok:true});await pending;assert.equal(h.closed,1);
+});
+test('no file or file validation failure stays in the popup without sending data',async()=>{
+ const h=popupHarness({encodeDocument:async()=>{throw Object.assign(new Error('File exceeds 20 MB.'),{code:'FILE_TOO_LARGE',stage:'import'});}});
+ await h.import();assert.match(h.elements.status.textContent,/Choose a PDF or DOCX/);
+ h.elements['document-file'].files=[{name:'private.pdf'}];await h.import();
+ assert.equal(h.messages.length,0);assert.equal(h.closed,0);assert.equal(h.elements['read-file'].disabled,false);
+ assert.match(h.elements.status.textContent,/FILE_TOO_LARGE/);assert.doesNotMatch(h.elements['debug-report'].textContent,/private.pdf/);
 });

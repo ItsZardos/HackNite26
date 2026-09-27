@@ -1,16 +1,12 @@
-<img src="extension/public/brand/monkey.png" alt="Undertone's monkey reading with headphones" width="160" height="160">
+<img src="assets/undertone-wordmark.svg" alt="undertone. — a score for every story" width="1200">
 
-# Undertone
+Undertone gives what you read an instrumental soundtrack. Gemini identifies the mood of each passage, and the music changes as you scroll—from a quiet opening to a tense moment or a hopeful ending.
 
-A Chrome extension that adds an instrumental soundtrack to what you read. Paste text, scan a webpage, or import a document. Undertone uses Gemini to match the music to the mood of each passage.
+## Run the demo
 
-## Get started
+You'll need **Chrome**, **Git**, **Node.js 22.13 or newer**, and a [Gemini API key](https://aistudio.google.com/apikey). Works on Windows, macOS, and Linux.
 
-You'll need **Google Chrome**, **Git**, and **Node.js 22.13 or newer**. The same setup works on Windows, macOS, and Linux. Each teammate runs the server on their own computer.
-
-### 1. Set up the server
-
-Run these commands in your terminal:
+### 1. Start the server
 
 ```sh
 git clone https://github.com/ItsZardos/undertone.git
@@ -19,43 +15,45 @@ npm run setup
 npm ci
 ```
 
-Open the `.env` file created by setup and add your [Gemini API key](https://aistudio.google.com/apikey):
+Open the `.env` file that setup creates and paste your key:
 
 ```dotenv
 GEMINI_API_KEY=your_key_here
 ```
 
-Leave the other settings at their defaults, then start the server:
+Leave the other settings as they are, then run:
 
 ```sh
 npm start
 ```
 
-Keep that terminal running while you use Undertone. Your key stays in `.env`, which Git ignores. Text you submit is sent to Gemini; imported files are parsed locally.
+Keep that terminal open during the demo. Your key stays in `.env`, which Git ignores.
 
-### 2. Load the extension
+### 2. Add Undertone to Chrome
 
-1. Open `chrome://extensions` and turn on **Developer mode**.
-2. Click **Load unpacked** and select the repo's **extension** folder.
+1. Open `chrome://extensions` and enable **Developer mode**.
+2. Choose **Load unpacked** and select the repo's **extension** folder.
 3. Pin Undertone from Chrome's extensions menu.
 
-## Read with Undertone
+Click the monkey in your toolbar to begin. There's no separate website to open.
 
-Click the toolbar icon and choose:
+## Try the reader
 
-- **Paste text:** paste your passage, then click **Open reader**.
-- **Scan page:** read the article in your current tab. Obvious navigation and ads are filtered out.
-- **Import file:** choose a **PDF or DOCX** in the import window, then click **Open reader**.
+| In the extension menu | What to do |
+| --- | --- |
+| **Paste text** | Paste your passage, then choose **Open reader**. |
+| **Scan page** | Extract the article from the current tab. Navigation and other page clutter are filtered out. |
+| **Import file** | Choose a PDF or DOCX inside the popup, then choose **Open reader**. |
 
-The reader opens once the text and soundtrack are ready. Press **Play**, then scroll—the music follows the passage you're reading.
+The reader opens only when your text and soundtrack are ready. Press **Play** and scroll between passages to hear the mood change. The bottom bar shows the current mood and lets you jump between sections. **New text** opens the extension menu again.
 
-To scan a local PDF or DOCX tab automatically, enable **Allow access to file URLs** under **Undertone → Details** in `chrome://extensions`. For hosted document viewers, download the file and use **Import file**.
+Files are parsed locally; extracted text is sent to Gemini. Imports support **20 MB**, **100,000 characters**, and **200 PDF pages**. Image-only PDFs need OCR first; older `.doc` files need to be saved as `.docx`. Complex PDF layouts may need a quick check.
 
-Imports support up to **20 MB**, **100,000 characters**, and **200 pages for PDFs**. Scanned images need OCR first, protected files need an unlocked copy, and older `.doc` files must be saved as `.docx`. Complex PDF layouts may still need manual correction.
+To scan a local PDF or DOCX tab, enable **Allow access to file URLs** in Undertone's extension details. For online document viewers, download the file and use **Import file**.
 
-## Update
+## Stay up to date
 
-Stop the server with **Ctrl+C**, then run these commands inside your existing checkout:
+Stop the server with **Ctrl+C**, then run this inside your checkout:
 
 ```sh
 git pull --ff-only
@@ -63,17 +61,17 @@ npm ci
 npm start
 ```
 
-Click **Reload** on Undertone in `chrome://extensions`. Open a fresh reader to use the changes; old readers keep their saved text. Your `.env` is preserved.
+Click **Reload** on Undertone in `chrome://extensions`. Open a new reader to see the changes. Your `.env` stays intact.
 
-## If something goes wrong
+## If something gets stuck
 
-- **Can't reach the server:** check that `npm start` is running. Restart it after changing `.env`.
-- **Gemini errors:** run `npm run doctor` in a second terminal. It tests paste and scan scoring with sample text and uses API quota. Share the output or the popup's **Copy debug report**, never your key.
-- **No sound:** press Play and check the reader volume, tab mute, and system output.
-- **PowerShell blocks npm:** use Command Prompt or replace `npm` with `npm.cmd`.
+- **Server unavailable:** check that `npm start` is running. Restart after changing `.env`.
+- **Gemini error:** run `npm run doctor` in a second terminal. It makes test API requests and uses quota. Share its output or **Copy debug report** from the popup, never your key.
+- **No audio:** press Play, then check the reader volume, tab mute, and system output.
+- **PowerShell blocks npm:** use Command Prompt or type `npm.cmd` instead of `npm`.
 
-## Development
+---
 
-Run `npm test` for the test suite and `npm run build` to validate the extension. Load `extension/` directly; there is no separate build folder to install.
+To verify the project, run `npm test` and `npm run build`. Load `extension/` directly—there's no second build folder.
 
-[MIT license](LICENSE). Bundled Mozilla Readability is covered by its [Apache 2.0 license](extension/vendor/LICENSE.md).
+[MIT license](LICENSE) · [Mozilla Readability license](extension/vendor/LICENSE.md)

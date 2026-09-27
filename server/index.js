@@ -85,11 +85,11 @@ const server=http.createServer(async(req,res)=>{
    return;
   }
   if(req.method!=='GET'&&req.method!=='HEAD'){json(405,{error:'Method not allowed.'});return;}
-  if(url.pathname==='/'){res.writeHead(302,{Location:'/reader/index.html'});res.end();return;}
+  if(url.pathname==='/'){json(200,{service:'Undertone',message:'Use Undertone from the Chrome toolbar. The reader opens after your text is ready.'});return;}
   const rel=decodeURIComponent(url.pathname.slice(1));
   if(!isPublicPath(rel)){json(404,{error:'Not found.'});return;}
   const file=path.resolve(extensionRoot,rel);if(!file.startsWith(extensionRoot)){json(404,{error:'Not found.'});return;}
   await serveStaticFile(req,res,file);
- }catch(e){if(!res.destroyed)json(e.code==='ENOENT'?404:errorStatus(e),e.code==='ENOENT'?{error:'Not found.'}:publicError(e,'Analysis failed. Please retry or open the sample journey.'));}
+ }catch(e){if(!res.destroyed)json(e.code==='ENOENT'?404:errorStatus(e),e.code==='ENOENT'?{error:'Not found.'}:publicError(e,'Analysis failed. Please retry from the extension menu.'));}
 });
-server.listen(port,'127.0.0.1',()=>console.log(`Undertone ready at http://127.0.0.1:${port}`));
+server.listen(port,'127.0.0.1',()=>console.log(`Undertone server ready at http://127.0.0.1:${port}. Open Undertone from the Chrome toolbar to read.`));

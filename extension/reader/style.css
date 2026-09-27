@@ -69,7 +69,6 @@ h1 {
 }
 #entry-copy { max-width: 420px; color: var(--muted); font-size: 14px; line-height: 1.9; }
 #entry-title:focus { outline: none; }
-#demo { margin-top: 18px; }
 .text-button { min-height: 44px; padding: 10px 0; background: transparent; border: 0; border-bottom: 1px solid var(--rule); color: var(--text); font-size: 11px; letter-spacing: .4px; }
 .text-button:hover { color: var(--accent); border-color: var(--accent); }
 

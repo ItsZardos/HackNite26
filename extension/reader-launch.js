@@ -1,4 +1,5 @@
 import {readLocalDocument} from './document-file.js';
+import {readTransferredDocument} from './document-transfer.js';
 // Runs in the page's isolated extension world, after Readability is injected.
 export function extractArticle() {
   // Chrome serializes this function: all extraction helpers must live inside it.
@@ -125,37 +126,29 @@ async function readPage(tabId, api, trace, fetcher) {
   return result;
 }
 
-async function prepareScore(article, scan, api, fetcher) {
-  // Keep the worker active while the server streams whitespace, then the score.
-  const keepAlive = typeof api.runtime.getPlatformInfo === 'function' ? setInterval(() => {
-    Promise.resolve().then(() => api.runtime.getPlatformInfo()).catch(() => {});
-  }, 20000) : null;
+async function prepareScore(article, scan, fetcher) {
+  let response;
   try {
-    let response;
-    try {
-      response = await fetcher('http://127.0.0.1:8787/api/analyze', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(scan ? {text: article.text, scan: true, stream: true} : {text: article.text, stream: true}),
-        signal: AbortSignal.timeout(65000)
-      });
-    } catch (error) {
-      if (error.name === 'TimeoutError' || error.name === 'AbortError') throw failure('SERVER_TIMEOUT', 'score', 'Preparing the reader timed out. Please try again.');
-      throw failure('SERVER_UNREACHABLE', 'score', 'Start Undertone with npm start, then try again. The local server could not be reached.');
-    }
-    let score;
-    try { score = await response.json(); }
-    catch (error) {
-      if (error.name === 'TimeoutError' || error.name === 'AbortError') throw failure('SERVER_TIMEOUT', 'score', 'Preparing the reader timed out. Please try again.');
-      throw failure('SERVER_INVALID_RESPONSE', 'score', 'The server returned an unreadable response. Restart Undertone and try again.');
-    }
-    if (!response.ok || score?.error) throw Object.assign(failure(/^GEMINI_[A-Z_]+$/.test(score?.code) ? score.code : 'SERVER_ANALYSIS_FAILED', 'score', typeof score?.error === 'string' ? score.error : 'Could not prepare this text. Please try again.'), {httpStatus: response.status, upstreamStatus: score?.upstreamStatus});
-    if (!Array.isArray(score?.sections) || !score.sections.length || score.sections.some(section => !section || typeof section.text !== 'string')) {
-      throw failure('SERVER_INCOMPLETE_SCORE', 'score', 'The score is incomplete. Please try again.');
-    }
-    return score;
-  } finally {
-    if (keepAlive !== null) clearInterval(keepAlive);
+    response = await fetcher('http://127.0.0.1:8787/api/analyze', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(scan ? {text: article.text, scan: true, stream: true} : {text: article.text, stream: true}),
+      signal: AbortSignal.timeout(65000)
+    });
+  } catch (error) {
+    if (error.name === 'TimeoutError' || error.name === 'AbortError') throw failure('SERVER_TIMEOUT', 'score', 'Preparing the reader timed out. Please try again.');
+    throw failure('SERVER_UNREACHABLE', 'score', 'Start Undertone with npm start, then try again. The local server could not be reached.');
   }
+  let score;
+  try { score = await response.json(); }
+  catch (error) {
+    if (error.name === 'TimeoutError' || error.name === 'AbortError') throw failure('SERVER_TIMEOUT', 'score', 'Preparing the reader timed out. Please try again.');
+    throw failure('SERVER_INVALID_RESPONSE', 'score', 'The server returned an unreadable response. Restart Undertone and try again.');
+  }
+  if (!response.ok || score?.error) throw Object.assign(failure(/^GEMINI_[A-Z_]+$/.test(score?.code) ? score.code : 'SERVER_ANALYSIS_FAILED', 'score', typeof score?.error === 'string' ? score.error : 'Could not prepare this text. Please try again.'), {httpStatus: response.status, upstreamStatus: score?.upstreamStatus});
+  if (!Array.isArray(score?.sections) || !score.sections.length || score.sections.some(section => !section || typeof section.text !== 'string')) {
+    throw failure('SERVER_INCOMPLETE_SCORE', 'score', 'The score is incomplete. Please try again.');
+  }
+  return score;
 }
 
 async function pruneReaders(api) {
@@ -166,7 +159,11 @@ async function pruneReaders(api) {
   if (readers.length > 10) await api.storage.session.remove(readers.slice(0, readers.length - 10).map(([id]) => id));
 }
 
-export async function launchReader({mode, tabId, text, title}, api = chrome, createId = () => crypto.randomUUID(), fetcher = fetch) {
+export async function launchReader({mode, tabId, text, file}, api = chrome, createId = () => crypto.randomUUID(), fetcher = fetch) {
+  // Own extraction and scoring here, so a submitted import survives popup close.
+  const keepAlive = typeof api.runtime.getPlatformInfo === 'function' ? setInterval(() => {
+    Promise.resolve().then(() => api.runtime.getPlatformInfo()).catch(() => {});
+  }, 20000) : null;
   const events = [];
   let stage = 'input';
   const trace = (nextStage, code, details = {}) => {
@@ -180,11 +177,17 @@ export async function launchReader({mode, tabId, text, title}, api = chrome, cre
   };
   try {
     if (!['paste','scan','import'].includes(mode)) throw failure('INPUT_MODE_INVALID', 'input', 'Unknown reader action.');
-    const article = mode === 'scan' ? await readPage(tabId, api, trace, fetcher) : {text: typeof text === 'string' ? text.trim() : '', title: title || 'Reading selection', author: ''};
+    let article;
+    if(mode==='scan')article=await readPage(tabId,api,trace,fetcher);
+    else if(mode==='import'){
+      trace('import','FILE_READING');
+      article=await readTransferredDocument(file,fetcher);
+      trace('import','FILE_TEXT_READY',{characters:article.text.length});
+    }else article={text:typeof text==='string'?text.trim():'',title:'Reading selection',author:''};
     if (article.text.length < 80) throw failure('INPUT_TOO_SHORT', 'input', 'Please provide at least 80 characters of reading text.');
     if (article.text.length > 100000) throw failure('INPUT_TOO_LONG', 'input', 'Please use an article under 100,000 characters.');
     trace('score', 'SCORING_STARTED', {characters: article.text.length});
-    const score = await prepareScore(article, mode === 'scan' && !['pdf','docx'].includes(article.kind), api, fetcher);
+    const score = await prepareScore(article, mode === 'scan' && !['pdf','docx'].includes(article.kind), fetcher);
     trace('store', 'SCORE_READY');
     const id = `undertone-article-${createId()}`;
     await api.storage.session.set({[id]: {score, title: article.title, author: article.author, createdAt: Date.now()}});
@@ -192,12 +195,7 @@ export async function launchReader({mode, tabId, text, title}, api = chrome, cre
       await pruneReaders(api);
       trace('open', 'READER_OPENING');
       const url=api.runtime.getURL(`reader/index.html?article=${encodeURIComponent(id)}`);
-      if(mode==='import' && api.windows?.getLastFocused){
-        let browserWindow;
-        try{browserWindow=await api.windows.getLastFocused({windowTypes:['normal']});}catch{}
-        if(Number.isInteger(browserWindow?.id))await api.tabs.create({url,windowId:browserWindow.id});
-        else await api.windows.create({url,type:'normal'});
-      }else await api.tabs.create({url});
+      await api.tabs.create({url});
     } catch (error) {
       await api.storage.session.remove(id);
       throw error;
@@ -208,5 +206,7 @@ export async function launchReader({mode, tabId, text, title}, api = chrome, cre
     safe.diagnostic = {code: safe.code, stage: safe.stage || stage, mode: ['scan','import'].includes(mode) ? mode : 'paste', events};
     for (const field of ['httpStatus','upstreamStatus']) if (Number.isInteger(safe[field]) && safe[field] >= 100 && safe[field] <= 599) safe.diagnostic[field] = safe[field];
     throw safe;
+  } finally {
+    if(keepAlive!==null)clearInterval(keepAlive);
   }
 }

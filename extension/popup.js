@@ -1,8 +1,10 @@
+import {encodeDocument} from './document-transfer.js';
 const $ = id => document.getElementById(id);
 const importFile=$('import-file');
 const paste = $('paste'), scan = $('scan'), status = $('status');
 const choices = $('choices'), form = $('paste-form'), text = $('text');
 const back = $('back'), submit = $('open-reader');
+const importForm=$('import-form'),fileInput=$('document-file'),fileSubmit=$('read-file'),importBack=$('import-back');
 const debug = $('debug'), debugReport = $('debug-report'), copyDebug = $('copy-debug');
 let opening = false;
 
@@ -27,12 +29,15 @@ function message(value) {
 
 function setBusy(value) {
   opening = value;
-  for (const control of [paste, scan, back, submit, text, importFile]) control.disabled = value;
+  for (const control of [paste, scan, back, submit, text, importFile, fileInput, fileSubmit, importBack]) control.disabled = value;
   submit.textContent = value ? 'Preparing reader…' : 'Open reader';
+  fileSubmit.textContent = value ? 'Preparing reader…' : 'Open reader';
 }
 
 async function openReader(mode) {
   if (opening) return;
+  const selectedFile=fileInput.files?.[0];
+  if(mode==='import'&&!selectedFile){message('Choose a PDF or DOCX file first.');fileInput.focus();return;}
   const readingText = text.value.trim();
   if (mode === 'paste' && readingText.length < 80) {
     message('Paste at least 80 characters of reading text.');
@@ -41,19 +46,20 @@ async function openReader(mode) {
   }
   setBusy(true);
   debug.hidden = true;
-  message(mode === 'scan' ? 'Reading this page and preparing its soundtrack…' : 'Preparing your text and soundtrack…');
+  message(mode === 'scan' ? 'Reading this page and preparing its soundtrack…' : mode==='import' ? 'Reading your file and preparing its soundtrack…' : 'Preparing your text and soundtrack…');
   try {
     const request = {type: 'open-reader', mode};
     if (mode === 'scan') {
       // Capture the source tab before the worker creates the reader tab.
       const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
       request.tabId = tab?.id;
-    } else request.text = readingText;
+    } else if(mode==='import') request.file=await encodeDocument(selectedFile);
+    else request.text = readingText;
     const result = await chrome.runtime.sendMessage(request);
     if (!result?.ok) throw Object.assign(new Error(result?.error || 'Could not prepare the reader. Please try again.'), {diagnostic: result?.diagnostic});
     window.close();
   } catch (error) {
-    const diagnostic = error.diagnostic || {code: /^(FILE|SERVER)_[A-Z_]+$/.test(error.code)?error.code:'POPUP_CONNECTION_FAILED', stage: 'handoff', mode, version: chrome.runtime.getManifest().version};
+    const diagnostic = error.diagnostic || {code: /^(FILE|SERVER)_[A-Z_]+$/.test(error.code)?error.code:'POPUP_CONNECTION_FAILED', stage: error.stage || 'handoff', mode, version: chrome.runtime.getManifest().version};
     console.error('[Undertone]', diagnostic);
     showDiagnostic(diagnostic);
     message(`[${diagnostic.code}] ${error.message || 'Could not prepare the reader. Please try again.'}`);
@@ -61,36 +67,24 @@ async function openReader(mode) {
   }
 }
 
-paste.addEventListener('click', () => {
+function showView(view) {
   if (opening) return;
-  choices.hidden = true;
-  form.hidden = false;
-  paste.setAttribute('aria-expanded', 'true');
+  choices.hidden = view !== 'choices';
+  importFile.hidden = view !== 'choices';
+  form.hidden = view !== 'paste';
+  importForm.hidden = view !== 'import';
+  paste.setAttribute('aria-expanded', String(view==='paste'));
+  importFile.setAttribute('aria-expanded', String(view==='import'));
   message('');
-  text.focus();
-});
-back.addEventListener('click', () => {
-  if (opening) return;
-  form.hidden = true;
-  choices.hidden = false;
-  paste.setAttribute('aria-expanded', 'false');
-  message('');
-  paste.focus();
-});
+  (view==='paste'?text:view==='import'?fileInput:paste).focus();
+}
+paste.addEventListener('click',()=>showView('paste'));
+back.addEventListener('click',()=>showView('choices'));
+importFile.addEventListener('click',()=>showView('import'));
+importBack.addEventListener('click',()=>{showView('choices');if(!opening)importFile.focus();});
 form.addEventListener('submit', event => {
   event.preventDefault();
   return openReader('paste');
 });
 scan.addEventListener('click', () => openReader('scan'));
-importFile.addEventListener('click',async()=>{
-  if(opening)return;
-  setBusy(true);
-  message('Opening file importer…');
-  try {
-    await chrome.windows.create({url:chrome.runtime.getURL('import.html'),type:'popup',width:460,height:520,focused:true});
-    window.close();
-  } catch {
-    message('Could not open the importer. Reload Undertone at chrome://extensions, then click Import file again.');
-    setBusy(false);
-  }
-});
+importForm.addEventListener('submit',event=>{event.preventDefault();return openReader('import');});

@@ -1,4 +1,3 @@
-import {demo} from './demo.js';
 import {AudioEngine} from './audio.js';
 const $=id=>document.getElementById(id), audio=new AudioEngine();
 const colors={calm:'#bfd6a4',happy:'#e1cb83',hopeful:'#d5dc9c',melancholy:'#94afca',mysterious:'#b9a6d5',tense:'#dfab7b',dark:'#bd8b96',triumphant:'#e2cd85'};
@@ -9,13 +8,13 @@ async function newText(){
  if(typeof globalThis.chrome?.action?.openPopup==='function'){
   try{await chrome.action.openPopup();message('');return;}catch{}
  }
- message('Open Undertone from your browser toolbar, then choose Paste text or Scan page.');
+ message('Open Undertone from your browser toolbar, then choose Paste text, Scan page, or Import file.');
 }
 $('exit').onclick=newText;$('another').onclick=newText;
 function render(data,meta={}){
  stop();score=data;current=-1;$('welcome').hidden=true;$('reading').hidden=false;$('player').hidden=false;$('exit').hidden=false;
  $('article-title').textContent=meta.title||data.title||'Untitled';$('byline').textContent=`${meta.author||data.author||'Your reading selection'}  ·  ${Math.max(1,Math.ceil(data.sections.reduce((n,s)=>n+s.text.split(/\s+/).length,0)/220))} min read`;
- $('source-label').textContent=data.source==='demo'?'Sample story · curated score':'Analyzed with Gemini';$('article-type').textContent=data.source==='demo'?'SAMPLE TEXT':'READER';
+ $('source-label').textContent='Analyzed with Gemini';$('article-type').textContent='READER';
  $('sections').replaceChildren();$('timeline').replaceChildren();
  for(const s of data.sections){
   const section=document.createElement('section');section.dataset.section=s.id;section.id=`section-${s.id}`;
@@ -53,8 +52,7 @@ $('play').onclick=async()=>{
  }
 };
 $('volume').oninput=e=>audio.setVolume(Number(e.target.value)/100);
-$('demo').onclick=()=>{render(demo);$('play').click();};
-function showEmpty(title = 'Open a text.', copy = 'Open Undertone from your browser toolbar, then choose Paste text or Scan page.') {
+function showEmpty(title = 'Use the extension.', copy = 'Choose Paste text, Scan page, or Import file from Undertone in your browser toolbar. Your reader opens when the text is ready.') {
  $('reading').hidden = true;
  $('player').hidden = true;
  $('exit').hidden = true;
@@ -62,7 +60,6 @@ function showEmpty(title = 'Open a text.', copy = 'Open Undertone from your brow
  $('welcome').removeAttribute('aria-busy');
  $('entry-title').textContent = title;
  $('entry-copy').textContent = copy;
- $('demo').hidden = location.protocol === 'chrome-extension:';
  window.scrollTo({top: 0, behavior: 'instant'});
  $('entry-title').focus({preventScroll: true});
 }

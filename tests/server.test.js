@@ -5,7 +5,7 @@ import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {tmpdir} from 'node:os';
 
-test('fresh backend serves reader/music and protects private files on the host OS', {timeout:20000}, async()=>{
+test('fresh backend serves APIs/assets without a standalone reader or private files', {timeout:20000}, async()=>{
   const reservation=net.createServer();
   await new Promise((resolve,reject)=>{reservation.once('error',reject);reservation.listen(0,'127.0.0.1',resolve);});
   const port=reservation.address().port;
@@ -23,16 +23,14 @@ test('fresh backend serves reader/music and protects private files on the host O
     const base=`http://127.0.0.1:${port}`;
     let response=await fetch(base+'/');
     assert.equal(response.status,200);
-    assert.match(await response.text(),/undertone/);
+    assert.match((await response.json()).message,/Chrome toolbar/);
     response=await fetch(base+'/reader/app.js');
-    assert.equal(response.status,200);
-    assert.equal(response.headers.get('content-type'),'text/javascript');
-    assert.match(await response.text(),/AudioEngine/);
+    assert.equal(response.status,404);
     response=await fetch(base+'/public/brand/monkey.png');
     assert.equal(response.status,200);
     assert.equal(response.headers.get('content-type'),'image/png');
     assert.deepEqual(Buffer.from(await response.arrayBuffer()).subarray(0,8),Buffer.from([137,80,78,71,13,10,26,10]));
-    for(const route of ['/.env','/local.env','/reader/..%5c.env','/reader/%2e%2e%5cserver/index.js','/reader/..%5cshared/analysis.js','/server/index.js','/shared/analysis.js','/extension/reader/index.html','/scripts/start.js','/package.json']){
+    for(const route of ['/reader/index.html','/import.html','/.env','/local.env','/reader/..%5c.env','/reader/%2e%2e%5cserver/index.js','/reader/..%5cshared/analysis.js','/server/index.js','/shared/analysis.js','/extension/reader/index.html','/scripts/start.js','/package.json']){
       response=await fetch(base+route);assert.equal(response.status,404,route);
     }
     response=await fetch(base+'/api/health',{headers:{Origin:'https://example.org'}});

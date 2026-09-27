@@ -2,7 +2,7 @@ import {launchReader} from './reader-launch.js';
 
 // The worker owns the whole handoff: closing the popup cannot cancel a scan.
 chrome.runtime.onMessage.addListener((request, sender, respond) => {
-  if (sender.id !== chrome.runtime.id || !['popup.html','import.html'].some(page=>sender.url === chrome.runtime.getURL(page)) || request?.type !== 'open-reader') return;
+  if (sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL('popup.html') || request?.type !== 'open-reader') return;
   if (!['paste','scan','import'].includes(request.mode)) {
     respond({ok: false, error: 'Unknown reader action.'});
     return;

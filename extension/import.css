@@ -1,9 +1,0 @@
-body { width: auto; max-width: 540px; margin: 0 auto; padding: 28px; }
-h1 { margin: 0; font: 30px/1.2 Baskerville, 'Iowan Old Style', Georgia, serif; font-weight: normal; }
-.intro, .hint { font-size: 12px; line-height: 1.6; color: #706457; }
-.intro { margin: 12px 0 24px; }
-.hint { font-size: 11px; margin: 12px 0; }
-input[type="file"] { display: block; width: 100%; padding: 12px 0; font: 12px 'Avenir Next', Avenir, 'Segoe UI', sans-serif; }
-input::file-selector-button { border: 1px solid #cbbfae; border-radius: 0; background: #faf6ef; padding: 10px 14px; margin-right: 12px; color: #29231d; font: inherit; cursor: pointer; }
-input:focus-visible { outline: 2px solid #896d43; outline-offset: 4px; }
-#import-form { padding-bottom: 22px; }
