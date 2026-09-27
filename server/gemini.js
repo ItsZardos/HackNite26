@@ -30,14 +30,17 @@ export function validatePageAnalysis(data, chunks) {
   return {...score, sections:sections.map((s,id) => ({...s,id}))};
 }
 
-export async function analyze(chunks, {key=process.env.GEMINI_API_KEY,model=process.env.GEMINI_MODEL||'gemini-3.8-flash',fetcher=fetch,cleanPage=false,signal,...requestOptions}={}) {
+export async function analyze(chunks, {key=process.env.GEMINI_API_KEY,model=process.env.GEMINI_MODEL||'gemini-3.8-flash',fallbackModel=process.env.GEMINI_FALLBACK_MODEL??'gemini-3.5-flash-lite',fetcher=fetch,cleanPage=false,signal,...requestOptions}={}) {
   if (!key) throw Object.assign(new Error('Add GEMINI_API_KEY to the server .env file and restart npm start, then try again.'),{status:503});
   const input = cleanPage ? chunks.map(c => ({id:c.id, paragraphs:c.text.split(/\n\s*\n/).map((text,id) => ({id,text}))})) : chunks;
   const generationConfig = {responseMimeType:'application/json',responseJsonSchema:cleanPage?scanSchema():schema,temperature:0.35};
   // This is a compact classification task. Lower thinking avoids spending the
   // popup's deadline on extended reasoning; keep older model configs compatible.
-  if (/^gemini-3[.-]/.test(model) && !model.includes('image')) generationConfig.thinkingConfig = {thinkingLevel:'low'};
-  const data = await requestGemini({systemInstruction:{parts:[{text:composer+(cleanPage?' '+pageCleanup:'')}]}, contents:[{role:'user',parts:[{text:JSON.stringify(input)}]}], generationConfig}, {key,model,fetcher,signal,...requestOptions});
+  const body = {systemInstruction:{parts:[{text:composer+(cleanPage?' '+pageCleanup:'')}]}, contents:[{role:'user',parts:[{text:JSON.stringify(input)}]}], generationConfig};
+  const bodyForModel = selected => ({...body, generationConfig:{...generationConfig,
+    ...(/^gemini-3[.-]/.test(selected) && !selected.includes('image') ? {thinkingConfig:{thinkingLevel:'low'}} : {})
+  }});
+  const data = await requestGemini(body, {key,model,fallbackModel,bodyForModel,fetcher,signal,...requestOptions});
   const finishReason = data.candidates?.[0]?.finishReason;
   if (data.promptFeedback?.blockReason || ['SAFETY','BLOCKLIST','PROHIBITED_CONTENT','RECITATION'].includes(finishReason)) {
     throw Object.assign(new Error('Gemini declined to score this passage. Try another article.'), {code:'GEMINI_CONTENT_BLOCKED',status:422});

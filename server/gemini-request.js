@@ -53,7 +53,8 @@ function httpFailure(response, data) {
 // One deadline covers all attempts and backoff, staying inside the popup's 65s
 // request limit. Retry only transient failures; never substitute an invented score.
 export async function requestGemini(body, {
-  key, model, fetcher = fetch, signal, timeoutMs = 60000, attemptTimeoutMs = 30000,
+  key, model, fallbackModel = '', bodyForModel = () => body,
+  fetcher = fetch, signal, timeoutMs = 60000, attemptTimeoutMs = 30000,
   wait = (ms, signal) => delay(ms, undefined, {signal}),
   onDiagnostic = event => console.warn('[Gemini]', JSON.stringify(event))
 }) {
@@ -61,15 +62,16 @@ export async function requestGemini(body, {
   const diagnose = event => { try { onDiagnostic(event); } catch {} };
   const deadline = AbortSignal.timeout(timeoutMs);
   const totalSignal = signal ? AbortSignal.any([signal, deadline]) : deadline;
+  let activeModel = model;
   for (let attempt = 1; attempt <= 3; attempt++) {
     signal?.throwIfAborted();
     if (deadline.aborted) throw timedOut();
     const attemptSignal = AbortSignal.any([totalSignal, AbortSignal.timeout(attemptTimeoutMs)]);
     let response;
     try {
-      response = await fetcher(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      response = await fetcher(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(activeModel)}:generateContent`, {
         method: 'POST', headers: {'Content-Type': 'application/json', 'x-goog-api-key': key},
-        signal: attemptSignal, body: JSON.stringify(body)
+        signal: attemptSignal, body: JSON.stringify(bodyForModel(activeModel))
       });
       let data;
       try { data = await response.json(); }
@@ -80,7 +82,7 @@ export async function requestGemini(body, {
       if (!response.ok) throw Object.assign(httpFailure(response, data), {upstreamStatus: response.status});
       attemptSignal.throwIfAborted();
       if (!data || typeof data !== 'object') throw failure('Gemini returned an unreadable score. Please try again.', 'GEMINI_INVALID_RESPONSE');
-      if (attempt > 1) diagnose({event: 'recovered', attempt, elapsedMs: Date.now() - started});
+      if (attempt > 1) diagnose({event: 'recovered', attempt, model: activeModel, elapsedMs: Date.now() - started});
       return data;
     } catch (cause) {
       signal?.throwIfAborted();
@@ -88,11 +90,17 @@ export async function requestGemini(body, {
       const error = cause.code?.startsWith?.('GEMINI_') ? cause : attemptSignal.aborted
         ? Object.assign(timedOut(), {retryable: true})
         : failure('Gemini could not be reached. Check your internet connection and try again.', 'GEMINI_NETWORK', 502, {retryable: true});
-      const backoff = error.retryAfterSeconds === undefined ? 500 * 2 ** (attempt - 1) + Math.floor(Math.random() * 250) : error.retryAfterSeconds * 1000;
+      const backoff = error.retryAfterSeconds === undefined ? 1000 * 2 ** (attempt - 1) + Math.floor(Math.random() * 250) : error.retryAfterSeconds * 1000;
       const remaining = timeoutMs - (Date.now() - started);
       const retry = Boolean(error.retryable && attempt < 3 && backoff + 1000 < remaining);
-      diagnose({event: 'request_failed', attempt, httpStatus: response?.status, code: error.code, retry, elapsedMs: Date.now() - started});
+      diagnose({event: 'request_failed', attempt, model: activeModel, httpStatus: response?.status, code: error.code, retry, elapsedMs: Date.now() - started});
       if (!retry) throw error;
+      // Change models only for an upstream availability error. Never route
+      // around quota, account, access, content, or local network failures.
+      if (error.code === 'GEMINI_UNAVAILABLE' && fallbackModel && activeModel !== fallbackModel) {
+        diagnose({event: 'model_fallback', attempt, model: activeModel, nextModel: fallbackModel});
+        activeModel = fallbackModel;
+      }
       try { await wait(backoff, totalSignal); }
       catch { signal?.throwIfAborted(); throw timedOut(); }
     }

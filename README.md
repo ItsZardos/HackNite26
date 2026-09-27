@@ -94,9 +94,21 @@ All eight committed `.wav` files in `extension/public/music/` are complete 16-se
 
 Temporary service, network, and short rate-limit failures are retried automatically, up to three attempts within one minute. The popup stays open until scoring succeeds. The backend stops the request if the client disconnects. Gemini 3 text models use low thinking to reduce scoring latency.
 
+**Version 1.2.4:** upstream availability errors such as **503 UNAVAILABLE** now switch the next attempt to `gemini-3.5-flash-lite`, within the same three-attempt/one-minute budget. Previously every retry used the same model. This fallback works with existing `.env` files without editing your key; optionally set `GEMINI_FALLBACK_MODEL=` to disable it. Both models still perform real Gemini scoring and scans still validate original paragraph selections. Account, permission, quota and content errors do not trigger a model switch. A wider Gemini outage can still affect both models.
+
+If paste works but scanning returns upstream 503, the key is being accepted for paste; the scan scoring request is hitting a Gemini availability failure. A shared key does not guarantee that separate requests to a model will succeed. Pull the update, **stop and restart the Node server**, then reload Undertone in Chrome. Reloading only the extension leaves the old retry code running.
+
+To compare Gemini access on teammates' computers, run this from the checkout in a second terminal:
+
+```sh
+npm run doctor
+```
+
+This prints the checkout version, effective model settings, and separate paste/scan results using synthetic text. It makes real Gemini API requests and uses project quota. Share this output if a failure persists; do not share `.env`. It checks Gemini scoring independently of Chrome, so it does not test permission to read a particular webpage. An old `.env` is preserved by setup and can select a different primary model even when teammates use the same key.
+
 The error now identifies the next step: update a rejected key in your local `.env`, check `GEMINI_MODEL` if the model is unavailable, or check your project's access/quota in Google AI Studio. All teammates using the same project key share its API limits. An exhausted daily quota or account restriction needs attention in AI Studio; repeated clicks cannot fix it. No account or billing settings are changed by Undertone.
 
-The server terminal prints a short diagnostic such as `GEMINI_UNAVAILABLE` with its HTTP status, attempt number, and whether it will retry. These diagnostics contain no API keys, article text, or raw provider responses. If a failure persists, share the code and failing article URL, never your `.env`.
+The server terminal prints a short diagnostic such as `GEMINI_UNAVAILABLE` with its HTTP status, model, attempt number, and whether it will retry. `model_fallback` identifies the switch and `recovered` confirms a successful provider response. These diagnostics contain no API keys, article text, or raw provider responses. If a failure persists, share the code and failing article URL, never your `.env`.
 
 ## Scan errors and debugging
 

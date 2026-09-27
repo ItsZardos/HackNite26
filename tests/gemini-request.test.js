@@ -196,7 +196,7 @@ test('diagnostics omit upstream messages, request text, keys, and project identi
   const diagnostic = JSON.stringify(h.events);
   for (const secret of privateMessage.split(' ')) assert.ok(!diagnostic.includes(secret));
   for (const event of h.events) {
-    assert.ok(Object.keys(event).every(field => ['event', 'attempt', 'httpStatus', 'code', 'retry', 'elapsedMs'].includes(field)));
+    assert.ok(Object.keys(event).every(field => ['event', 'attempt', 'httpStatus', 'code', 'retry', 'elapsedMs', 'model'].includes(field)));
   }
 });
 
@@ -308,4 +308,61 @@ test('null or missing score payloads fail with a Gemini message instead of a Typ
       return true;
     });
   }
+});
+
+test('scan availability fallback preserves original paragraphs and schema across models', async () => {
+  const requests = [], events = [];
+  const result = await analyze(chunks, {...analyzeOptions, cleanPage:true,
+    model:'gemini-2.5-flash', fallbackModel:'gemini-3.5-flash-lite',
+    onDiagnostic:event => events.push(event),
+    fetcher:async (url, options) => {
+      requests.push({url, body:JSON.parse(options.body)});
+      return requests.length === 1 ? response(503) : response(200, {
+        candidates:[{content:{parts:[{text:JSON.stringify({...score, sections:score.sections.map(s => ({...s, keepParagraphIds:[0]}))})}]}}]
+      });
+    }
+  });
+  assert.equal(result.sections[0].text, passage);
+  assert.match(requests[0].url, /gemini-2\.5-flash:generateContent$/);
+  assert.match(requests[1].url, /gemini-3\.5-flash-lite:generateContent$/);
+  assert.equal(requests[0].body.generationConfig.thinkingConfig, undefined);
+  assert.deepEqual(requests[1].body.generationConfig.thinkingConfig, {thinkingLevel:'low'});
+  assert.deepEqual(requests[0].body.contents, requests[1].body.contents);
+  assert.deepEqual(requests[0].body.generationConfig.responseJsonSchema, requests[1].body.generationConfig.responseJsonSchema);
+  assert.equal(events.find(e => e.event === 'model_fallback').nextModel, 'gemini-3.5-flash-lite');
+  assert.equal(events.at(-1).model, 'gemini-3.5-flash-lite');
+});
+
+test('fallback shares the three-attempt budget and does not bounce between models', async () => {
+  const urls = [];
+  const h = harness(async url => { urls.push(url); return response(503); }, {fallbackModel:'gemini-3.5-flash-lite'});
+  await assert.rejects(h.run(), {code:'GEMINI_UNAVAILABLE',upstreamStatus:503});
+  assert.equal(urls.length,3);
+  assert.notEqual(urls[0],urls[1]);
+  assert.equal(urls[1],urls[2]);
+  assert.equal(h.events.filter(e => e.event === 'model_fallback').length,1);
+});
+
+for (const status of [401,403,404,429,505]) {
+  test(`fallback never changes model for HTTP ${status}`, async () => {
+    const urls = [];
+    const h = harness(async url => { urls.push(url); return response(status); }, {fallbackModel:'gemini-3.5-flash-lite'});
+    await assert.rejects(h.run());
+    assert.equal(new Set(urls).size,1);
+    assert.equal(h.events.some(e => e.event === 'model_fallback'),false);
+  });
+}
+
+test('empty fallback setting keeps retries on the configured model', async () => {
+  const urls=[];
+  await assert.rejects(analyze(chunks,{...analyzeOptions,model:'gemini-3.8-flash',fallbackModel:'',fetcher:async url=>{urls.push(url);return response(503);}}));
+  assert.equal(urls.length,3);
+  assert.equal(new Set(urls).size,1);
+});
+
+test('fallback does not reset the deadline or ignore a long Retry-After', async () => {
+  const h=harness(async()=>response(503,{}, {'retry-after':'120'}),{fallbackModel:'gemini-3.5-flash-lite'});
+  await assert.rejects(h.run(),{code:'GEMINI_UNAVAILABLE'});
+  assert.equal(h.waits.length,0);
+  assert.equal(h.events.some(e=>e.event==='model_fallback'),false);
 });
