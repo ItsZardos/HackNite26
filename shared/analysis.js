@@ -31,7 +31,7 @@ export function validateAnalysis(data, chunks) {
   if(!data || typeof data.overallTone!=='string' || !Array.isArray(data.sections) || data.sections.length!==chunks.length)throw new Error('Gemini returned an incomplete score. Please try again.');
   const byId=new Map();
   for(const s of data.sections){
-    if(!Number.isInteger(s.id)||s.id<0||s.id>=chunks.length||byId.has(s.id)||!MOODS.includes(s.mood)||typeof s.musicPrompt!=='string'||s.musicPrompt.length>2000||!['intensity','energy','brightness'].every(k=>Number.isFinite(s[k])&&s[k]>=0&&s[k]<=1))throw new Error('Gemini returned invalid emotional metadata. Please try again.');
+    if(!s||typeof s!=='object'||!Number.isInteger(s.id)||s.id<0||s.id>=chunks.length||byId.has(s.id)||!MOODS.includes(s.mood)||typeof s.musicPrompt!=='string'||s.musicPrompt.length>2000||!['intensity','energy','brightness'].every(k=>Number.isFinite(s[k])&&s[k]>=0&&s[k]<=1))throw new Error('Gemini returned invalid emotional metadata. Please try again.');
     if(s.sceneProfile!==undefined&&!SCENE_IDS.includes(s.sceneProfile)||s.secondaryMood!==undefined&&!MOODS.includes(s.secondaryMood)||s.texture!==undefined&&!TEXTURES.includes(s.texture)||s.tension!==undefined&&(!Number.isFinite(s.tension)||s.tension<0||s.tension>1))throw new Error('Gemini returned invalid soundtrack direction. Please try again.');
     byId.set(s.id,s);
   }

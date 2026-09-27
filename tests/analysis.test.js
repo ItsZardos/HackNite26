@@ -31,3 +31,7 @@ test('Gemini schema requests blended emotional direction and validates returned 
  }});
  for(const bad of [{sceneProfile:'unknown'},{secondaryMood:'rage'},{tension:2},{texture:'vocals'}])assert.throws(()=>validateAnalysis({overallTone:'Reflective',sections:[{...section,...bad}]},chunks),/soundtrack direction/);
 });
+
+test('null Gemini section metadata yields an actionable score error',()=>{
+ assert.throws(()=>validateAnalysis({overallTone:'quiet',sections:[null]},[{id:0,text:'Reading'}]),/Gemini returned invalid emotional metadata/);
+});

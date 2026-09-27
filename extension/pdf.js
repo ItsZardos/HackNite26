@@ -8,10 +8,13 @@ export async function readPdfBytes(bytes,fetcher=fetch) {
   try { response=await fetcher('http://127.0.0.1:8787/api/pdf-text',{
     method:'POST',headers:{'Content-Type':'application/pdf'},body:bytes,signal:AbortSignal.timeout(40000)
   }); } catch(error) {
-    throw fail(error.name==='TimeoutError'?'PDF_TIMEOUT':'SERVER_UNREACHABLE',error.name==='TimeoutError'?'PDF extraction timed out. Choose a smaller file.':'Start Undertone with npm start, then try again.');
+    throw fail(['TimeoutError','AbortError'].includes(error.name)?'PDF_TIMEOUT':'SERVER_UNREACHABLE',['TimeoutError','AbortError'].includes(error.name)?'PDF extraction timed out. Choose a smaller file.':'Start Undertone with npm start, then try again.');
   }
   let result;
-  try {result=await response.json();}catch{throw fail('PDF_SERVER_RESPONSE','The server could not extract the PDF. Pull the latest update, run npm ci, and restart npm start.');}
+  try {result=await response.json();}catch(error){
+    if(['TimeoutError','AbortError'].includes(error.name))throw fail('PDF_TIMEOUT','PDF extraction timed out. Choose a smaller file.');
+    throw fail('PDF_SERVER_RESPONSE','The server could not extract the PDF. Pull the latest update, run npm ci, and restart npm start.');}
+  if(!result||typeof result!=='object'||Array.isArray(result))throw fail('PDF_SERVER_RESPONSE','The server returned an invalid PDF response. Restart Undertone and try again.');
   if(!response.ok||result.error)throw fail(/^PDF_[A-Z_]+$/.test(result.code)?result.code:'PDF_SERVER_RESPONSE',typeof result.error==='string'?result.error:'PDF extraction failed.');
   if(typeof result.text!=='string'||result.text.length<80)throw fail('PDF_NO_TEXT','PDF has insufficient readable text. Image-only scans need OCR first.');
   return {text:result.text,title:result.title||'PDF reading',author:'',kind:'pdf',pages:result.pages};

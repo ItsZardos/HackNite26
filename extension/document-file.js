@@ -14,8 +14,13 @@ export async function readDocument(file,fetcher=fetch) {
   try {
     response=await fetcher('http://127.0.0.1:8787/api/docx-text',{method:'POST',
       headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.wordprocessingml.document'},body:bytes,signal:AbortSignal.timeout(40000)});
-    result=await response.json();
-  }catch(error){throw fail(error.name==='TimeoutError'?'FILE_TIMEOUT':'SERVER_UNREACHABLE',error.name==='TimeoutError'?'Document extraction timed out. Choose a smaller file.':'Start or update the server: run npm ci, then npm start.');}
+  }catch(error){throw fail(['TimeoutError','AbortError'].includes(error.name)?'FILE_TIMEOUT':'SERVER_UNREACHABLE',['TimeoutError','AbortError'].includes(error.name)?'Document extraction timed out. Choose a smaller file.':'Start or update the server: run npm ci, then npm start.');}
+  try {result=await response.json();}
+  catch(error){
+    if(['TimeoutError','AbortError'].includes(error.name))throw fail('FILE_TIMEOUT','Document extraction timed out. Choose a smaller file.');
+    throw fail('DOCX_SERVER_RESPONSE','The server returned an unreadable DOCX response. Restart Undertone and try again.');
+  }
+  if(!result||typeof result!=='object'||Array.isArray(result))throw fail('DOCX_SERVER_RESPONSE','The server returned an invalid DOCX response. Restart Undertone and try again.');
   if(!response.ok||result.error)throw fail(/^DOCX_[A-Z_]+$/.test(result.code)?result.code:'DOCX_SERVER_RESPONSE',typeof result.error==='string'?result.error:'DOCX support is unavailable. Run npm ci and restart the server.');
   if(typeof result.text!=='string'||result.text.length<80||result.text.length>100000)throw fail('DOCX_TEXT_LIMIT','Use a document with 80 to 100,000 readable characters.');
   return {text:result.text,title:file.name,author:'',kind:'docx'};

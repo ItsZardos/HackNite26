@@ -3,7 +3,7 @@ import path from 'node:path';
 
 const mime = {
   '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
-  '.wav': 'audio/wav', '.json': 'application/json', '.png': 'image/png'
+  '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.json': 'application/json', '.png': 'image/png'
 };
 const contentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; media-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
 

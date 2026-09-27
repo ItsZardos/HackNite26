@@ -25,22 +25,24 @@ export function extractArticle() {
       if (node.matches('script,style,noscript,template,input,textarea,select,button,[hidden],[aria-hidden="true"],[contenteditable]:not([contenteditable="false"])') || style.display === 'none' || style.visibility === 'hidden') cloned[i]?.remove();
     }
     function plainText(root) {
-      const parts = [];
-      let length = 0;
+      let text = '';
+      const append = value => {
+        text = (text + value).replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n').replace(/\n{3,}/g, '\n\n');
+        if (text.trim().length > 100000) throw Object.assign(new Error(), {code:'SCAN_TEXT_TOO_LONG'});
+      };
       const blocks = /^(ADDRESS|ARTICLE|ASIDE|BLOCKQUOTE|BR|DIV|H[1-6]|HEADER|HR|LI|MAIN|P|PRE|SECTION|TR)$/;
       const stack = [root];
-      while (stack.length && length < 100000) {
+      while (stack.length) {
         const node = stack.pop();
-        if (node === null) { parts.push('\n\n'); length += 2; continue; }
+        if (node === null) { append('\n\n'); continue; }
         if (node.nodeType === 3) {
-          const text = node.textContent.slice(0, 100000 - length);
-          parts.push(text); length += text.length;
+          append(node.textContent);
         } else if (node.nodeType === 1 || node.nodeType === 9) {
-          if (blocks.test(node.nodeName)) { parts.push('\n\n'); length += 2; stack.push(null); }
+          if (blocks.test(node.nodeName)) { append('\n\n'); stack.push(null); }
           stack.push(...Array.from(node.childNodes).reverse());
         }
       }
-      return parts.join('').replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, 100000);
+      return text.trim();
     }
     let parsed, text = '', method = 'readability';
     if (typeof Readability === 'function') {
@@ -49,7 +51,7 @@ export function extractArticle() {
         // Trusted Types policy. A parser failure must not disable the fallback.
         parsed = new Readability(snapshot.cloneNode(true), {serializer: node => node, charThreshold: 80, maxElemsToParse: 50000}).parse();
         if (parsed?.content?.nodeType) text = plainText(parsed.content);
-      } catch { warnings.push('READABILITY_PARSE_FAILED'); }
+      } catch (error) { if(error.code==='SCAN_TEXT_TOO_LONG')throw error; warnings.push('READABILITY_PARSE_FAILED'); }
     } else warnings.push('READABILITY_UNAVAILABLE');
     if (text.length < 80) {
       const candidates = [
@@ -66,6 +68,7 @@ export function extractArticle() {
     console.info('[Undertone]', {stage: 'extract', code: 'SCAN_TEXT_READY', ...diagnostics});
     return {title: parsed?.title || document.title, author: parsed?.byline || '', text, diagnostics};
   } catch (error) {
+    if(error.code==='SCAN_TEXT_TOO_LONG')return fail('SCAN_TEXT_TOO_LONG', 'This page has more than 100,000 readable characters. Use Paste text with a shorter selection so none of your reading is cut off.');
     return fail('SCAN_EXTRACTION_FAILED', 'The page text extractor failed. Reload this page and the Undertone extension, then retry. Open Error details to share the diagnostic code.');
   }
 }

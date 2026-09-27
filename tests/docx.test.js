@@ -42,3 +42,12 @@ test('automatic local file reads enforce the stream size limit and keep paths ou
  assert.equal(cancelled,true);
  await assert.rejects(readLocalDocument('file:///private/story.docx',api,async()=>{throw new Error('private path');}),error=>error.code==='FILE_READ_FAILED'&&!error.message.includes('private path'));
 });
+
+for(const extension of ['pdf','docx'])test(extension+' importer reports malformed and interrupted server responses specifically',async()=>{
+ const input=file('Reading.'+extension,Buffer.from(extension==='pdf'?'%PDF-1.4 test':'PKtest'));
+ for(const body of [null,[],42,'wrong server']){
+  await assert.rejects(readDocument(input,async()=>Response.json(body)),{code:extension.toUpperCase()+'_SERVER_RESPONSE'});
+ }
+ await assert.rejects(readDocument(input,async()=>new Response('<html>Wrong server</html>')),{code:extension.toUpperCase()+'_SERVER_RESPONSE'});
+ await assert.rejects(readDocument(input,async()=>({ok:true,json:async()=>{throw new DOMException('Aborted','AbortError');}})),{code:extension==='pdf'?'PDF_TIMEOUT':'FILE_TIMEOUT'});
+});

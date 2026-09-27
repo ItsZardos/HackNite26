@@ -42,6 +42,12 @@ test('fresh backend serves APIs/assets without a standalone reader or private fi
       assert.equal(response.headers.get('content-length'),String(data.length));
       assert.equal(response.headers.get('accept-ranges'),'bytes');
     }
+    const mp3=base+'/public/music/recordings/slow-stride.mp3';
+    response=await fetch(mp3,{headers:{Range:'bytes=0-2'}});
+    assert.equal(response.status,206);assert.equal(response.headers.get('content-type'),'audio/mpeg');
+    assert.equal(await response.text(),'ID3');
+    response=await fetch(mp3,{method:'HEAD'});
+    assert.equal(response.headers.get('content-type'),'audio/mpeg');assert.ok(Number(response.headers.get('content-length'))>100000);
     const musicURL=base+'/public/music/calm.wav';
     const complete=Buffer.from(await (await fetch(musicURL)).arrayBuffer());
     for(const headers of [{},{Range:'bytes=0-43'}]){

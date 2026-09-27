@@ -89,7 +89,10 @@ function scheduleLayout(){clearTimeout(resizeTimer);resizeTimer=setTimeout(layou
 addEventListener('resize',scheduleLayout);
 if(typeof ResizeObserver==='function')new ResizeObserver(scheduleLayout).observe($('sections'));
 addEventListener('keydown',event=>{
- if(!score||event.ctrlKey||event.metaKey||event.altKey||event.target.closest('button,input,textarea,select,[contenteditable=true]'))return;
+ if(!score||event.ctrlKey||event.metaKey||event.altKey||event.target.closest('input,textarea,select,[contenteditable]:not([contenteditable=false])'))return;
+ // Play retains focus after a click. Paging keys still navigate the reading;
+ // Space keeps its native button behavior so it can pause/resume playback.
+ if(event.key===' '&&event.target.closest('button'))return;
  const delta={ArrowDown:1,ArrowUp:-1,PageDown:1,PageUp:-1,' ':event.shiftKey?-1:1}[event.key];
  if(delta===undefined&&event.key!=='Home'&&event.key!=='End')return;
  event.preventDefault();

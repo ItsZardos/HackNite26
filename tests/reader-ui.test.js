@@ -81,3 +81,12 @@ test('fractional page heights keep later pages aligned at browser zoom levels',a
  assert.match(h.w.document.querySelector('#page-progress').textContent,/^13 \/ /);
  assert.equal(h.article.children[12].inert,false);h.w.close();
 });
+
+test('Page Down still works after Play while Space remains available for the button',async()=>{
+ const h=await reader({id:'article',record}),button=h.w.document.querySelector('#play');
+ button.focus();await button.onclick();
+ const space=new h.w.KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true});button.dispatchEvent(space);
+ assert.equal(space.defaultPrevented,false);
+ button.dispatchEvent(new h.w.KeyboardEvent('keydown',{key:'PageDown',bubbles:true,cancelable:true}));
+ await settle();assert.equal(h.article.scrollTop,500);assert.equal(h.moods.at(-1),'happy');h.w.close();
+});

@@ -85,9 +85,9 @@ test('empty/loading/PDF documents return distinct diagnostic codes', () => {
   }
 });
 
-test('oversized DOM text stays within the API character limit', () => {
+test('oversized DOM text fails explicitly instead of silently dropping the ending', () => {
   const f = fixture(`<main>${paragraph.repeat(1000)}</main>`, {parser: false});
-  try {const result = f.run(); assert.ok(result.text.length <= 100000); assert.ok(result.text.length >= 99000);}
+  try {const result = f.run(); assert.equal(result.error?.code, 'SCAN_TEXT_TOO_LONG'); assert.equal(result.text, undefined);}
   finally {f.close();}
 });
 
@@ -127,4 +127,10 @@ test('embedded PDF is identified before webpage furniture can be scored',()=>{
  const f=fixture('<header>Download Print Share</header><embed type="application/pdf" src="/files/report.pdf">');
  try{const result=f.run();assert.equal(result.error.code,'SCAN_IMPORT_REQUIRED');assert.equal(result.text,undefined);}
  finally{f.close();}
+});
+
+for (const parser of [true, false]) test(`large scan preserves all text when only formatting exceeds the limit (parser: ${parser})`, () => {
+ const text='A'.repeat(99998),f=fixture(`<article><p>${text}</p></article>`,{parser});
+ try { const result=f.run();assert.equal(result.error,undefined);assert.equal(result.text,text); }
+ finally {f.close();}
 });
