@@ -24,6 +24,7 @@ Setup creates `.env` without replacing an existing one. Open it in VS Code and s
 
 ```dotenv
 GEMINI_API_KEY=your_key_here
+GEMINI_MODEL=gemini-3.8-flash
 ```
 
 Use your own key from [Google AI Studio](https://aistudio.google.com/apikey). Keep `PORT=8787` and leave `EXTENSION_ID` empty for team development. Never commit or send your `.env` to GitHub.
@@ -62,6 +63,8 @@ git pull --ff-only
 npm run setup
 npm test
 ```
+
+If your existing `.env` still selects `gemini-2.5-flash`, change that line to `GEMINI_MODEL=gemini-3.8-flash`. Setup preserves local configuration, so pulling alone will not update it. Keep your API key in `.env`; do not commit it.
 
 Restart `npm start`. In `chrome://extensions`, click **Reload** on Undertone. Close old reader tabs and open a fresh one from the popup. The build is local and ignored by Git; every teammate must run setup after pulling changes.
 

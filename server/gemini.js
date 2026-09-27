@@ -29,7 +29,7 @@ export function validatePageAnalysis(data, chunks) {
   return {...score, sections:sections.map((s,id) => ({...s,id}))};
 }
 
-export async function analyze(chunks, {key=process.env.GEMINI_API_KEY,model=process.env.GEMINI_MODEL||'gemini-2.5-flash',fetcher=fetch,cleanPage=false}={}) {
+export async function analyze(chunks, {key=process.env.GEMINI_API_KEY,model=process.env.GEMINI_MODEL||'gemini-3.8-flash',fetcher=fetch,cleanPage=false}={}) {
   if (!key) throw Object.assign(new Error('Add GEMINI_API_KEY to the server .env file and restart npm start, then try again.'),{status:503});
   const input = cleanPage ? chunks.map(c => ({id:c.id, paragraphs:c.text.split(/\n\s*\n/).map((text,id) => ({id,text}))})) : chunks;
   const response = await fetcher(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
