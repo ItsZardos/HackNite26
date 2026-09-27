@@ -1,19 +1,21 @@
 import {lstat, readdir, readFile, rename} from 'node:fs/promises';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import path from 'node:path';
+import {TRACKS} from '../extension/public/music/catalog.js';
 
 const projectRoot = new URL('../', import.meta.url);
 const requiredFiles = [
   'manifest.json', 'popup.html', 'popup.css', 'popup.js', 'background.js', 'reader-launch.js', 'pdf.js', 'document-file.js', 'document-transfer.js',
   'vendor/Readability.js', 'vendor/LICENSE.md',
   'reader/index.html', 'reader/app.js', 'reader/style.css', 'reader/audio.js', 'reader/reading-position.js', 'reader/music-library.js',
-  'public/music/catalog.js', 'public/music/synth.js', 'public/music/render-worker.js', 'public/music/LICENSE.md',
+  'public/music/catalog.js', 'public/music/recordings.js', 'public/music/sources.json', 'public/music/CREDITS.md', 'public/music/LICENSE.md',
+  ...TRACKS.map(track => `public/music/${track.file}`),
   'public/brand/monkey.png', 'public/brand/mascot.css', 'public/brand/mascot.js',
   ...[16, 32, 48, 128].map(size => `public/brand/icon-${size}.png`),
   ...['calm', 'happy', 'hopeful', 'melancholy', 'mysterious', 'tense', 'dark', 'triumphant'].map(mood => `public/music/${mood}.wav`)
 ];
 const allowedFiles = new Set(requiredFiles);
-const allowedDirectories = new Set(['reader', 'vendor', 'public', 'public/music', 'public/brand']);
+const allowedDirectories = new Set(['reader', 'vendor', 'public', 'public/music', 'public/music/recordings', 'public/brand']);
 
 // The committed folder is the installable extension. Keep its contents explicit
 // so backend files, credentials, and accidental copies cannot enter the package.

@@ -4,7 +4,7 @@ const $=id=>document.getElementById(id),audio=new AudioEngine();
 let score,current=-1,currentPage=-1,pages=[],settleTimer,resizeTimer,fadeTimer,soundToken=0,playToken=0,starting=false;
 function message(text){$('message').textContent=text;$('message').hidden=!text;}
 function status(text){$('play-status').textContent=text;}
-audio.onTrackChange=({track,fallback})=>{ $('mood').title=fallback?'Bundled WAV fallback':track?`${track.title} · Original CC0 composition`: 'Original CC0 music'; };
+audio.onTrackChange=({track,fallback})=>{ $('mood').title=fallback?'Bundled WAV fallback':track?`${track.title} · ${track.artist} · CC0`: 'Original CC0 music'; };
 function updatePlayButton(){
  $('play').dataset.playing=String(audio.playing||starting);
  $('play').setAttribute('aria-label',audio.playing||starting?'Pause soundtrack':'Play soundtrack');

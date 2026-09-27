@@ -14,7 +14,7 @@ Gemini makes the decisions behind the soundtrack. A character can be happy about
 - **Multidimensional emotion analysis:** We ask for primary and secondary moods, a scene profile, energy, brightness, tension, and a sound texture. These give us room for mixed feelings like nervous excitement, bittersweet nostalgia, and cautious optimism.
 - **Structured outputs:** Gemini returns JSON constrained by a response schema. The server checks section IDs, allowed values, and numeric ranges before those directions reach the reader.
 - **AI-assisted page cleanup:** When you scan a webpage, Gemini selects which extracted paragraphs belong to the article. Menus and cookie notices can go; the paragraphs we keep stay in the author's words.
-- **Adaptive soundtrack orchestration:** Gemini's directions guide the choice of 320 original musical arrangements across 20 emotional profiles. Even tense scenes get a restrained soundtrack, and study material can get a neutral backdrop.
+- **Adaptive soundtrack orchestration:** Gemini's directions guide the choice of 45 CC0 demo recordings across 20 emotional profiles. Even tense scenes get a restrained soundtrack, and study material can get a neutral backdrop.
 - **Resilient API integration:** Keys stay on the local server. We use bounded retries and model fallback for temporary failures. If scoring still fails, the popup explains the problem instead of quietly making up a result.
 
 Every new reading relies on Gemini to prepare its soundtrack before the reader opens. After that, playback follows your reading position locally. You can scroll freely without making another API request each time you move down the page.
@@ -64,27 +64,21 @@ Click the monkey in your toolbar to begin. There's no separate website to open.
 
 Once your text is ready, Undertone opens the reader. Press **Play** and scroll at your own pace. Each scroll settles on one page of text, so the soundtrack belongs to the passage you can actually see. Long passages span several pages without switching music. Pages adjust to your window, and a small counter keeps your place. You can also use the arrow keys or Page Up and Page Down. Playback and volume controls stay in a small bar at the bottom. Click **New text** to reopen the extension menu.
 
-## How the music is made
+## About the music
 
-**Gemini chooses the musical direction. A small synthesizer in the extension makes the sound.**
+**Gemini chooses the soundtrack. The music itself comes from 45 distinct CC0 recordings.**
 
-The synthesizer builds tones from sine waves, layers them into slow chords and a few higher notes, then adds soft stereo echoes. It follows chord patterns and timing rules written into the code. Each variation has a fixed seed for its note choices and placement, so it sounds the same every time.
+The demo includes piano, ambient, acoustic, and light orchestral pieces from several creators, including The Cynic Project, Juhani Junkala, Komiku, and others listed in the [music credits](extension/public/music/CREDITS.md). These are different pieces of music, rather than hundreds of variations from one synthesizer.
 
-There are **320 arrangements: 16 variations across 20 mood profiles**. They share a musical foundation rather than being 320 independently written songs. Energy changes the number of notes, brightness affects their register and level, and the texture changes how they begin and fade. Sounds named felt, strings, plucks, and pads are synthesized approximations, not recordings of those instruments.
+The actual MP3 files are in [extension/public/music/recordings](extension/public/music/recordings), about **39 MB** in total. They come with the repo and play locally, so you don't need a music account, a download script, or paid generation. Gemini still needs an API connection to analyze a new reading.
 
-The [catalog](extension/public/music/catalog.js) stores these settings. The [synthesizer](extension/public/music/synth.js) renders **48-second stereo tracks** on your computer in a background worker. Related keys, a shared tempo, and matched levels help the tracks blend without sudden changes in volume.
+These are **demo clips, roughly 22–58 seconds each**, rather than the full original songs. We kept the original tempo and pitch, matched their loudness, and softened the loop joins. The player changes to another suitable recording after roughly 45–55 seconds, or when you move into a different passage. Short clips loop in the meantime, and the current music keeps playing while the next file loads.
 
-Stay on a scene and another matching variation fades in around 48 seconds, avoiding the last 12 tracks. If the next one isn't ready, the current track keeps looping. The **eight bundled WAV files** are older 16-second loops made with [our Python script](scripts/generate_music.py). They serve as a fallback if the synthesizer can't run.
+Every recording has a source link and artist credit. The source files and our edits are documented in [sources.json](extension/public/music/sources.json), with the [license details here](extension/public/music/LICENSE.md). The eight older WAV loops remain as a fallback if a recording fails to load. The previous 320 procedural variations are no longer the playback catalog.
 
-There are no third-party recordings or samples, and no AI music-generation service. The compositions and rendered audio are released under [CC0 1.0](extension/public/music/LICENSE.md).
+## Where we'd take it next
 
-To save a track as a WAV file:
-
-```sh
-npm run music:export -- quiet-focus-01
-```
-
-It goes into `music-exports/` with a copy of the license. Use `--list` to see the track IDs, or `--all` to export all 320 (about 1.4 GB). Exporting works on Windows, macOS, and Linux. Generated files stay out of Git.
+We'd move the music library to online storage with an API for the catalog and track URLs. That would let us add more music without making people download a larger extension each time. For this demo, the audio stays bundled in GitHub so a fresh clone has everything needed to play it.
 
 ## Documents and privacy
 

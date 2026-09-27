@@ -16,7 +16,7 @@ function deferred(){
   return {promise,resolve,reject};
 }
 
-function audioHarness({fetchResponse,decode,resume,hold=false,supported=true,libraryRender}={}){
+function audioHarness({fetchResponse,decode,resume,hold=false,supported=true,libraryLoad}={}){
   const sources=[],gains=[],requests=[],timers=new Map();
   let context;
   class Param{
@@ -44,7 +44,7 @@ function audioHarness({fetchResponse,decode,resume,hold=false,supported=true,lib
     decodeAudioData(bytes){return decode?decode(bytes):Promise.resolve({duration:8,mood:bytes.mood});}
   }
   const globals={
-    URL,console,selectTrack,MusicLibrary:class { async render(track){if(libraryRender)return libraryRender(track);throw new Error('Renderer unavailable in legacy harness');} },
+    URL,console,selectTrack,MusicLibrary:class { async load(track){if(libraryLoad)return libraryLoad(track);throw new Error('Recording unavailable in legacy harness');} },
     AudioContext:supported?Context:undefined,
     window:{AudioContext:supported?Context:undefined},
     fetch:async url=>{
@@ -60,7 +60,8 @@ function audioHarness({fetchResponse,decode,resume,hold=false,supported=true,lib
   return {
     engine:globals.engine,sources,gains,requests,
     get context(){return context;},
-    rotate(){for(const [id,{callback,delay}]of [...timers])if(delay===44800){timers.delete(id);callback();}},
+    get rotationDelays(){return [...timers.values()].filter(t=>t.delay>=10000).map(t=>t.delay);},
+    rotate(){for(const [id,{callback,delay}]of [...timers])if(delay>=10000){timers.delete(id);callback();}},
     finishFades(){
       for(const [id,{callback,delay}]of [...timers])if(delay<10000){timers.delete(id);callback();}
     }
@@ -228,23 +229,23 @@ test('an old pause cleanup cannot stop a freshly resumed voice',async()=>{
  h.finishFades();assert.equal(h.sources[0].stops,1);assert.equal(h.sources[1].stops,0);h.engine.pause();h.finishFades();
 });
 
-test('Gemini scene direction selects a rendered composition and repeats keep the same voice',async()=>{
- const rendered=[],h=audioHarness({libraryRender:async track=>{rendered.push(track);return {duration:48};}});
+test('Gemini scene direction selects a bundled recording and repeats keep the same voice',async()=>{
+ const rendered=[],h=audioHarness({libraryLoad:async track=>{rendered.push(track);return {duration:48};}});
  const scene={mood:'happy',secondaryMood:'tense',sceneProfile:'nervous-excitement',intensity:.5,energy:.3,brightness:.6,tension:.5,text:'Nervous anticipation.'};
  await h.engine.setScene(scene);assert.equal(rendered.length,0);await h.engine.play();
- assert.equal(rendered[0].profile,'nervous-excitement');assert.equal(h.requests.length,0);assert.equal(h.sources.length,1);
+ assert.ok(rendered[0].profiles.includes('nervous-excitement'));assert.equal(h.requests.length,0);assert.equal(h.sources.length,1);
  await h.engine.setScene({...scene,text:'The anticipation continues.'});assert.equal(h.sources.length,1);
  h.rotate();await new Promise(resolve=>setImmediate(resolve));assert.equal(h.sources.length,2);assert.notEqual(rendered[0].id,rendered[1].id);
  h.engine.pause();h.finishFades();assert.equal(h.engine.playing,false);
 });
-test('unavailable rendering falls back to a playable bundled WAV and reports the fallback',async()=>{
+test('unavailable recording falls back to a playable bundled WAV and reports the fallback',async()=>{
  const h=audioHarness(),changes=[];h.engine.onTrackChange=event=>changes.push(event);
  await h.engine.setScene({mood:'calm',intensity:.2,sceneProfile:'quiet-focus'});await h.engine.play();
  assert.deepEqual(h.requests,['calm']);assert.equal(h.sources.length,1);assert.equal(changes[0].fallback,true);
  h.engine.pause();h.finishFades();
 });
-test('rendered buffer cache remains bounded across many scene changes',async()=>{
- const h=audioHarness({libraryRender:async()=>({duration:48})});await h.engine.play();
+test('recording buffer cache remains bounded across many scene changes',async()=>{
+ const h=audioHarness({libraryLoad:async()=>({duration:48})});await h.engine.play();
  for(const mood of ['happy','hopeful','melancholy','mysterious','tense','dark','triumphant']){
   await h.engine.setScene({mood,intensity:.3});h.finishFades();assert.ok(h.engine.buffers.size<=4);
  }
@@ -253,7 +254,7 @@ test('rendered buffer cache remains bounded across many scene changes',async()=>
 
 test('returning to the audible track during a pending change restores automatic variation',async()=>{
  const waiting=deferred(),entered=deferred();let block=false;
- const h=audioHarness({libraryRender:async()=>{if(block){entered.resolve();return waiting.promise;}return {duration:48};}});
+ const h=audioHarness({libraryLoad:async()=>{if(block){entered.resolve();return waiting.promise;}return {duration:48};}});
  const scene={mood:'calm',intensity:.2,sceneProfile:'quiet-focus'};
  await h.engine.setScene(scene);await h.engine.play();const original=h.engine.track;
  block=true;const pending=h.engine.setMood('tense',.3,{id:'pending-track'});await entered.promise;
@@ -262,4 +263,14 @@ test('returning to the audible track during a pending change restores automatic 
  block=false;h.rotate();await new Promise(resolve=>setImmediate(resolve));
  assert.equal(h.sources.length,2,'the next variation must still start after a cancelled change');
  h.engine.pause();h.finishFades();
+});
+
+
+test('recording rotation respects its duration and short loops remain calm',async()=>{
+ for(const [duration,delay] of [[58,54800],[24,44800]]){
+  const h=audioHarness({libraryLoad:async()=>({duration})});
+  await h.engine.setScene({mood:'calm',sceneProfile:'quiet-focus',intensity:.2});await h.engine.play();
+  assert.ok(Math.abs(h.rotationDelays[0]-delay)<.001);assert.deepEqual(h.sources[0].starts[0],[0,0]);
+  h.engine.pause();h.finishFades();
+ }
 });

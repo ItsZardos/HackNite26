@@ -1,50 +1,46 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFile,readdir} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {PROFILES,TRACKS,selectTrack} from '../extension/public/music/catalog.js';
-import {renderTrack} from '../extension/public/music/synth.js';
-import {encodeWave} from '../scripts/export-music.js';
+const music=new URL('../extension/public/music/',import.meta.url);
 
-test('catalog has 320 uniquely seeded compositions, 16 for every emotional profile',()=>{
- assert.equal(TRACKS.length,320);assert.equal(PROFILES.length,20);
- assert.equal(new Set(TRACKS.map(t=>t.id)).size,320);assert.equal(new Set(TRACKS.map(t=>t.seed)).size,320);
- for(const p of PROFILES)assert.equal(TRACKS.filter(t=>t.profile===p.id).length,16);
- assert.ok(TRACKS.every(t=>t.license==='CC0-1.0'&&t.duration===48&&t.bpm===80));
-});
-test('Gemini scene profiles and musical dimensions affect the chosen composition',()=>{
- const mixed={text:'They smiled, unsure what waited beyond the door.',mood:'happy',secondaryMood:'tense',sceneProfile:'nervous-excitement',energy:.4,brightness:.67,tension:.58,texture:'felt'};
- const track=selectTrack(mixed);assert.equal(track.profile,'nervous-excitement');
- const study=selectTrack({...mixed,mood:'calm',sceneProfile:'quiet-focus',energy:.1,tension:.05});assert.equal(study.profile,'quiet-focus');
- assert.notEqual(track.id,study.id);
-});
-test('selection avoids the last twelve tracks and varies deterministically',()=>{
- const section={mood:'calm',sceneProfile:'quiet-focus',text:'Focus on this reading.'},recent=[];
- assert.equal(selectTrack(section).id,selectTrack(section).id);
- for(let i=0;i<32;i++){const track=selectTrack(section,{recent,salt:i});assert.ok(!recent.slice(-12).includes(track.id));assert.equal(track.profile,'quiet-focus');recent.push(track.id);}
- assert.ok(new Set(recent).size>=13);
-});
-test('rendered emotional profiles are distinct, quiet stereo loops with consistent level',()=>{
+test('the catalog ships 45 real, distinct MP3s with CC0 sources and accurate checksums',async()=>{
+ assert.equal(TRACKS.length,45);assert.equal(new Set(TRACKS.map(t=>t.id)).size,45);
+ const files=await readdir(new URL('recordings/',music));assert.equal(files.length,45);
  const hashes=new Set();
- for(const profile of PROFILES){
-  const track=TRACKS.find(t=>t.profile===profile.id),a=renderTrack(track,4000);
-  assert.equal(a.channels.length,2);assert.equal(a.channels[0].length,48*4000);
-  let peak=0,power=0,step=0;
-  for(const c of a.channels)for(let i=0;i<c.length;i++){assert.ok(Number.isFinite(c[i]));peak=Math.max(peak,Math.abs(c[i]));power+=c[i]**2;if(i)step=Math.max(step,Math.abs(c[i]-c[i-1]));}
-  const rms=Math.sqrt(power/(a.channels[0].length*2));assert.ok(rms>.065&&rms<.076);assert.ok(peak<=.421);
-  for(const c of a.channels)assert.ok(Math.abs(c[0]-c.at(-1))<=step*1.02,'loop join should be no sharper than ordinary audio');
-  hashes.add(createHash('sha256').update(Buffer.from(a.channels[0].buffer)).digest('hex'));
+ for(const track of TRACKS){
+  assert.equal(track.license,'CC0-1.0');assert.ok(track.artist&&track.title);
+  assert.match(track.source,/^https:\/\/opengameart.org\/content\//);
+  assert.match(track.file,/^recordings\/[a-z0-9-]+\.mp3$/);
+  assert.ok(track.duration>=20&&track.duration<=60);
+  const data=await readFile(new URL(track.file,music));assert.ok(data.length>100000);
+  assert.equal(data.toString('ascii',0,3),'ID3');
+  const hash=createHash('sha256').update(data).digest('hex');assert.equal(hash,track.sha256);hashes.add(hash);
  }
- assert.equal(hashes.size,20);
+ assert.equal(hashes.size,45);
+ const sources=JSON.parse(await readFile(new URL('sources.json',music)));
+ assert.equal(sources.tracks.length,45);assert.equal(new Set(sources.tracks.map(t=>t.decodedSha256)).size,45);
+ assert.ok(sources.tracks.every(t=>t.peak<.96&&t.duration>=20));
 });
-test('a composition renders reproducibly and different arrangements produce different audio',()=>{
- const a=renderTrack(TRACKS[0],2000),b=renderTrack(TRACKS[0],2000),c=renderTrack(TRACKS[1],2000);
- assert.deepEqual(a.channels,b.channels);assert.notDeepEqual(a.channels,c.channels);
+test('every Gemini scene profile has at least three matching recordings',()=>{
+ assert.equal(PROFILES.length,20);
+ for(const p of PROFILES)assert.ok(TRACKS.filter(t=>t.profiles.includes(p.id)).length>=3,p.id);
 });
-
-test('exported compositions use standard complete stereo PCM WAV files',()=>{
- const audio=renderTrack(TRACKS[0],4000),bytes=encodeWave(audio);
- assert.equal(bytes.toString('ascii',0,4),'RIFF');assert.equal(bytes.toString('ascii',8,12),'WAVE');
- assert.equal(bytes.readUInt32LE(4)+8,bytes.length);assert.equal(bytes.readUInt16LE(20),1);
- assert.equal(bytes.readUInt16LE(22),2);assert.equal(bytes.readUInt16LE(34),16);
- assert.equal(bytes.readUInt32LE(24),4000);assert.equal(bytes.readUInt32LE(40),48*4000*4);
+test('selection follows the Gemini profile and repeats remain within that profile',()=>{
+ for(const sceneProfile of ['quiet-focus','nervous-excitement','quiet-suspense']){
+  const scene={sceneProfile,mood:'calm',text:'A reading passage.'},recent=[];
+  const pool=TRACKS.filter(t=>t.profiles.includes(sceneProfile));
+  for(let i=0;i<pool.length*3;i++){
+   const track=selectTrack(scene,{recent,salt:i});assert.ok(track.profiles.includes(sceneProfile));
+   if(recent.length)assert.notEqual(track.id,recent.at(-1));
+   if(i<pool.length)assert.ok(!recent.includes(track.id));recent.push(track.id);
+  }
+ }
+});
+test('legacy Gemini metadata still selects the requested mood deterministically',()=>{
+ for(const mood of ['calm','happy','hopeful','melancholy','mysterious','tense','dark','triumphant']){
+  const scene={mood,text:'The same passage.'};assert.equal(selectTrack(scene).id,selectTrack(scene).id);
+  assert.equal(selectTrack(scene).mood,mood);
+ }
 });

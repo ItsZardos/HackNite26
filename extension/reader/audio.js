@@ -26,7 +26,7 @@ export class AudioEngine {
   if (track) {
    if (!this.buffers.has(track.id)) {
     this.library ||= new MusicLibrary(this.context);
-    this.buffers.set(track.id, this.library.render(track).then(buffer => ({buffer,fallback:false})).catch(async () => ({buffer:await this.buffer(mood),fallback:true})).catch(error => {this.buffers.delete(track.id);throw error;}));
+    this.buffers.set(track.id, this.library.load(track).then(buffer => ({buffer,fallback:false})).catch(async () => ({buffer:await this.buffer(mood),fallback:true})).catch(error => {this.buffers.delete(track.id);throw error;}));
    }
    const result=await this.buffers.get(track.id);
    // Voices retain their own AudioBuffers. Bound the decoded cache separately.
@@ -63,12 +63,13 @@ export class AudioEngine {
  scheduleRotation(){
   clearTimeout(this.rotation);this.rotation=null;
   if(!this.scene||!this.track||!this.playing)return;
+  const duration=this.voices.get(this.activeMood)?.source.buffer.duration||this.track.duration;
   this.rotation=setTimeout(()=>{
    this.rotation=null;
    if(!this.playing)return;
    this.track=selectTrack(this.scene,{recent:this.recent,salt:++this.rotationCount});
    this.setMood(this.scene.mood,this.scene.intensity,this.track).catch(()=>this.scheduleRotation());
-  },44800);
+  },Math.max(44800,(duration-3.2)*1000));
  }
 
  preload(mood) {
@@ -140,7 +141,7 @@ export class AudioEngine {
   if (!this.voices.has(key)) {
    const source = this.context.createBufferSource(), gain = this.context.createGain();
    source.buffer = buffer; source.loop = true; gain.gain.value = 0;
-   source.connect(gain).connect(this.master); source.start(0, now % buffer.duration);
+   source.connect(gain).connect(this.master); source.start(0, track?0:now % buffer.duration);
    this.voices.set(key, {source, gain});
   }
   for (const [voiceKey, voice] of this.voices) this.fade(voice, voiceKey === key ? .68 + .07 * intensity : 0, now, duration);

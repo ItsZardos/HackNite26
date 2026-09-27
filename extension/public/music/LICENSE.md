@@ -1,29 +1,17 @@
-# Original Undertone music: CC0 1.0
+# Music licenses
 
-The composition data in `catalog.js`, the original synthesis implementation in
-`synth.js`, audio rendered from those compositions, and the eight original WAV
-loops in this directory are dedicated under **CC0 1.0 Universal**.
+## Bundled demo recordings
 
-To the extent copyright and related rights apply, the contributors dedicate
-these works to the public domain under CC0. You may copy, modify, distribute,
-and use them, including commercially, without asking permission or providing
-attribution. CC0 applies to these music works, not Undertone's name or logo.
+The 45 MP3 recordings in `recordings/` are used under **CC0 1.0 Universal**, as offered on their respective source pages. Where a creator offered multiple licenses, Undertone uses the CC0 option.
 
-[CC0 legal code](https://creativecommons.org/publicdomain/zero/1.0/legalcode.en)
+These recordings belong to the credited creators; Undertone does not claim to have composed or AI-generated them. See [CREDITS.md](CREDITS.md) for every title, artist, and source. [sources.json](sources.json) records the original downloads, hashes, excerpt times, loop edits, level adjustments, and packaged file hashes.
 
-## Provenance
+We excerpted up to 60 seconds from each source, applied a short circular crossfade and tiny edge fades, adjusted gain for consistent background listening, and encoded stereo MP3 files. Tempo and pitch were not changed.
 
-These works are generated from mathematical oscillators, original arrangement
-rules, seeded note choices, and common chord structures. No third-party sound
-recordings, sample packs, melodies copied from songs, AI music services, or
-artist recordings were used. The renderer uses additive sine-wave synthesis
-and calculated envelopes and echoes. Gemini scores the reading text and
-selects musical characteristics; it does not generate these audio recordings.
+[CC0 1.0 legal code](https://creativecommons.org/publicdomain/zero/1.0/legalcode.en)
 
-The catalog contains 320 distinct seeded compositions across 20 emotional
-profiles. Each renders a 48-second stereo arrangement on the listener's device.
-The original eight 16-second WAV files remain a compatibility fallback.
+## Original fallback loops
 
-CC0 includes a public-domain dedication and a fallback license where a waiver
-is not effective. Works are provided without warranty; this is not a claim
-that every jurisdiction eliminates every possible right.
+The eight WAV loops in this directory were made for Undertone using `scripts/generate_music.py`. The contributors dedicate those original compositions and recordings under CC0 1.0 Universal as well.
+
+CC0 applies to the music, not Undertone's name or logo. The application code remains under the repository's MIT license.
