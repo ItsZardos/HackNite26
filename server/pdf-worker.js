@@ -1,3 +1,4 @@
+import {pageLines,cleanPdfPages} from './pdf-layout.js';
 import {fileURLToPath} from 'node:url';
 import {parentPort, workerData} from 'node:worker_threads';
 import {getDocument, VerbosityLevel} from 'pdfjs-dist/legacy/build/pdf.mjs';
@@ -17,24 +18,15 @@ try {
   for (let number = 1; number <= pdf.numPages; number++) {
     const page = await pdf.getPage(number);
     const content = await page.getTextContent();
-    const lines = [];
-    let line = '', lastY;
-    for (const item of content.items) {
-      if (typeof item.str !== 'string') continue;
-      const y = item.transform?.[5];
-      if (line && lastY !== undefined && y !== undefined && Math.abs(y-lastY)>2) { lines.push(line); line=''; }
-      line += (line && !/\s$/.test(line) && !/^\s/.test(item.str) ? ' ' : '') + item.str;
-      lastY = y;
-      if (item.hasEOL) { lines.push(line); line=''; lastY=undefined; }
-    }
-    if (line) lines.push(line);
-    const text=lines.join('\n').trim();
-    length+=text.length+(pages.length?2:0);
-    if(length>100000) throw Object.assign(new Error(),{code:'PDF_TEXT_TOO_LONG'});
-    pages.push(text);
+    const viewport=page.getViewport({scale:1});
+    const lines=pageLines(content.items,viewport);
+    length+=lines.reduce((sum,line)=>sum+line.text.length+1,0);
+    if(length>100000)throw Object.assign(new Error(),{code:'PDF_TEXT_TOO_LONG'});
+    pages.push({width:viewport.width,height:viewport.height,lines});
     page.cleanup();
   }
-  const text=pages.join('\n\n').trim();
+  const {text}=cleanPdfPages(pages);
+  if(text.length>100000)throw Object.assign(new Error(),{code:'PDF_TEXT_TOO_LONG'});
   if(text.length<80) throw Object.assign(new Error(),{code:'PDF_NO_TEXT'});
   const metadata=await pdf.getMetadata().catch(()=>null);
   parentPort.postMessage({text,title:typeof metadata?.info?.Title==='string'?metadata.info.Title.slice(0,300):'',pages:pdf.numPages});

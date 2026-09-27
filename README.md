@@ -113,7 +113,7 @@ The server terminal prints a short diagnostic such as `GEMINI_UNAVAILABLE` with 
 
 ## Import PDF and Word DOCX files
 
-Version **1.3.1** replaces the hidden PDF picker with **Import file**, which opens a compact, persistent importer. Choose a file using its visible native file chooser, then click **Open reader**. The importer stays open while it extracts and scores the document. The full reader opens in your normal browser window only when preparation succeeds.
+Version **1.3.2** uses **Import file**, which opens a compact, persistent importer. Choose a file using its visible native file chooser, then click **Open reader**. The importer stays open while it extracts and scores the document. The full reader opens in your normal browser window only when preparation succeeds.
 
 After pulling, stop the server, run `npm ci`, start it again with `npm start`, and reload Undertone at `chrome://extensions`. Keep your existing local .env and key. DOCX support uses Mammoth; PDF support uses Mozilla PDF.js. Both extract text locally on your server.
 
@@ -123,7 +123,9 @@ After pulling, stop the server, run `npm ci`, start it again with `npm start`, a
 
 File bytes go only to your loopback server for extraction and are not saved by Undertone. Only extracted text goes to Gemini. PDF and DOCX text skips webpage cleanup. Local scans read only the file selected by the active tab; arbitrary URLs cannot be submitted by webpage scripts.
 
-Limits: **20 MB, 100,000 extracted characters, and 200 pages for PDFs**. Oversized documents get an explicit error rather than silently losing pages. Password-protected files must be unlocked locally first. Image-only documents need OCR; this version does not perform OCR. Complex PDF layouts may have imperfect reading order. DOCX import extracts plain text, not Word formatting or embedded images.
+Limits: **20 MB, 100,000 extracted characters, and 200 pages for PDFs**. Oversized documents get an explicit error rather than silently losing pages. Password-protected files must be unlocked locally first. Image-only documents need OCR; this version does not perform OCR. PDF text is ordered by position, with detection for common two-column prose. Isolated margin page numbers and repeated small margin headers/footers are removed. Wrapped lines and continuing sentences across pages are rejoined. A soft hyphen is removed; a hard wrap hyphen is removed only when the intact word appears elsewhere in the document. Lists, headings and paragraph gaps are retained where detectable. Complex tables, mixed layouts and unusual writing directions may still have imperfect reading order. DOCX import extracts plain text, not Word formatting or embedded images.
+
+After this parsing update, restart the server and import/scan the document again. Previously opened readers retain their saved text.
 
 The importer keeps errors visible and retains your selection so you can retry. Specific codes include `FILE_ACCESS_REQUIRED`, `FILE_UNSUPPORTED`, `DOCX_INVALID`, `PDF_PASSWORD_REQUIRED`, and `SCAN_IMPORT_REQUIRED`. Reports exclude the document's contents, filename and local path. Share the report rather than your .env.
 
@@ -147,7 +149,7 @@ Run `npm ci` once after pulling dependency changes, then `npm test`. Tests use N
 
 `extension/` is the complete installable extension: its root owns the popup, extraction and background handoff; `extension/reader/` owns reading, scroll tracking and Web Audio; `extension/public/music/` contains the bundled WAVs. `server/` owns Gemini and local file delivery. `shared/` owns chunking and metadata validation. Bundled WAVs and Mozilla Readability require no installation; the server document dependencies are installed by npm ci.
 
-Webpage scans combine paragraph selection and emotional scoring in one structured Gemini request, with bounded retries for temporary transport/service failures. The server validates paragraph IDs and reconstructs text from original paragraphs. Pasted text is scored without page cleanup. Both flows finish before a reader tab is opened. Reader sessions stay in extension session storage to support refresh; restarting Chrome clears them, and only the latest ten sessions are retained.
+Webpage scans combine paragraph selection and emotional scoring in one structured Gemini request, with bounded retries for temporary transport/service failures. The server validates paragraph IDs and reconstructs text from original paragraphs. Pasted text is scored without page cleanup. All flows finish before a reader tab is opened. Long prose is split into soundtrack sections at sentence boundaries; only a single sentence longer than 500 words requires a hard split to fit the section limit. Reader sessions stay in extension session storage to support refresh; restarting Chrome clears them, and only the latest ten sessions are retained.
 
 The backend binds to loopback, validates Host/Origin and static paths, and limits request sizes/concurrency. Keys remain server-side. A streaming JSON response starts promptly while analysis runs so the extension worker can wait for Gemini. Audio endpoints support lengths, HEAD and byte ranges for native players. Music starts with a short fade and changes moods with four-second crossfades.
 

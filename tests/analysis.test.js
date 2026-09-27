@@ -11,3 +11,12 @@ test('maps out-of-order IDs to original text',()=>{const out=validateAnalysis({o
 test('rejects malformed metadata and missing or duplicate IDs',()=>{const chunks=[{id:0,text:'a'},{id:1,text:'b'}];for(const sections of [[item(0),item(0)],[item(0)],[item(0),{...item(1),mood:'evil'}],[item(0),{...item(1),intensity:2}],[item(0),{...item(1),energy:NaN}]])assert.throws(()=>validateAnalysis({overallTone:'x',sections},chunks));});
 test('Gemini request uses secret header and structured JSON',async()=>{const chunks=[{id:0,text:words(100)}];const result=await analyze(chunks,{key:'test-key',fetcher:async(url,options)=>{assert.equal(options.headers['x-goog-api-key'],'test-key');assert.ok(!url.includes('test-key'));assert.equal(JSON.parse(options.body).generationConfig.responseMimeType,'application/json');return {ok:true,json:async()=>({candidates:[{content:{parts:[{text:JSON.stringify({overallTone:'quiet',sections:[item(0)]})}]}}]})};}});assert.equal(result.source,'gemini');assert.equal(result.sections[0].text,chunks[0].text);});
 test('missing key and rate limits give actionable errors',async()=>{await assert.rejects(()=>analyze([],{key:''}),/GEMINI_API_KEY/);await assert.rejects(()=>analyze([],{key:'test',fetcher:async()=>({ok:false,status:429})}),/rate limited/);});
+
+test('long prose sections end at sentence boundaries without losing or moving words',()=>{
+ const sentences=Array.from({length:35},(_,i)=>`Sentence${i} ${Array.from({length:22},()=> 'word').join(' ')} ends.`);
+ const text=sentences.join(' '),chunks=chunkText(text);
+ assert.ok(chunks.length>1);
+ assert.ok(chunks.every(c=>/^Sentence\d+ /.test(c.text)&&c.text.endsWith('ends.')));
+ assert.deepEqual(chunks.map(c=>c.text).join(' ').split(/\s+/),text.split(/\s+/));
+ assert.ok(chunks.every(c=>c.text.split(/\s+/).length<=500));
+});

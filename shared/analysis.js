@@ -6,7 +6,19 @@ export function chunkText(text) {
   const units = paragraphs.flatMap(p => {
     const words = p.split(/\s+/);
     if (words.length <= 500) return [p];
-    const parts = []; for (let i=0;i<words.length;i+=400) parts.push(words.slice(i,i+400).join(' ')); return parts;
+    const sentences=Array.from(new Intl.Segmenter(undefined,{granularity:'sentence'}).segment(p),s=>s.segment.trim()).filter(Boolean);
+    const parts=[];let section=[],count=0;
+    const finish=()=>{if(section.length)parts.push(section.join(' '));section=[];count=0;};
+    for(const sentence of sentences){
+      const sentenceWords=sentence.split(/\s+/);
+      // Only a single oversized sentence requires a hard split to respect
+      // the API section limit. Normal prose always breaks at sentence ends.
+      if(sentenceWords.length>500){finish();for(let i=0;i<sentenceWords.length;i+=400)parts.push(sentenceWords.slice(i,i+400).join(' '));continue;}
+      if(count+sentenceWords.length>500)finish();
+      section.push(sentence);count+=sentenceWords.length;
+      if(count>=400)finish();
+    }
+    finish();return parts;
   });
   const result=[]; let group=[], count=0;
   const flush=()=>{if(group.length)result.push({id:result.length,text:group.join('\n\n')});group=[];count=0;};
