@@ -75,7 +75,7 @@ test('hidden, editable and script content is not sent for analysis', () => {
 });
 
 test('empty/loading/PDF documents return distinct diagnostic codes', () => {
-  for (const [type, code] of [['empty','SCAN_NO_TEXT'], ['loading','SCAN_PAGE_LOADING'], ['pdf','SCAN_PDF_UNSUPPORTED']]) {
+  for (const [type, code] of [['empty','SCAN_NO_TEXT'], ['loading','SCAN_PAGE_LOADING'], ['pdf','SCAN_IMPORT_REQUIRED']]) {
     const f = fixture('<div>No text</div>');
     try {
       if (type === 'loading') f.dom.window.document.body.remove();
@@ -125,6 +125,6 @@ for (const parserLoads of [true, false]) {
 
 test('embedded PDF is identified before webpage furniture can be scored',()=>{
  const f=fixture('<header>Download Print Share</header><embed type="application/pdf" src="/files/report.pdf">');
- try{const result=f.run();assert.equal(result.error.code,'SCAN_PDF_DOCUMENT');assert.equal(result.pdfUrl,'/files/report.pdf');assert.equal(result.text,undefined);}
+ try{const result=f.run();assert.equal(result.error.code,'SCAN_IMPORT_REQUIRED');assert.equal(result.text,undefined);}
  finally{f.close();}
 });

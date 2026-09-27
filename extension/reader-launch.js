@@ -1,4 +1,4 @@
-import {readPdfUrl} from './pdf.js';
+import {readLocalDocument} from './document-file.js';
 // Runs in the page's isolated extension world, after Readability is injected.
 export function extractArticle() {
   // Chrome serializes this function: all extraction helpers must live inside it.
@@ -7,9 +7,9 @@ export function extractArticle() {
     console.error('[Undertone]', {stage: 'extract', code});
     return {error: {code, message}, diagnostics: {warnings}};
   };
-  if (document.contentType === 'application/pdf') return fail('SCAN_PDF_UNSUPPORTED', 'The PDF viewer cannot be scanned. Choose Paste text and add the PDF text.');
+  if (/pdf|officedocument|msword/.test(document.contentType)) return fail('SCAN_IMPORT_REQUIRED', 'Please use Import file to read this document. Select a PDF or DOCX; download it first if it is online.');
   const embeddedPdf=document.querySelector('embed[type="application/pdf"],object[type="application/pdf"]');
-  if(embeddedPdf) return {error:{code:'SCAN_PDF_DOCUMENT',message:'Open the original PDF or choose Open PDF file in Undertone.'},pdfUrl:embeddedPdf.getAttribute('src')||embeddedPdf.getAttribute('data')};
+  if(embeddedPdf) return fail('SCAN_IMPORT_REQUIRED','Please use Import file to read this document. Download the PDF or DOCX, then select it in the importer.');
   if (!document.body) return fail('SCAN_PAGE_LOADING', 'This page has not finished loading. Wait for its text to appear, then click Scan page again.');
   try {
     const snapshot = document.cloneNode(true);
@@ -72,7 +72,7 @@ export function extractArticle() {
 const failure = (code, stage, message) => Object.assign(new Error(message), {code, stage});
 function injectionFailure(error) {
   const message = error?.message || '';
-  if (/cannot access|missing host permission|not allowed|permission|extensions gallery/i.test(message)) return failure('SCAN_ACCESS_DENIED', 'extract', 'Chrome denied access to this tab. Open a regular article, refresh it, then click the pinned Undertone icon and Scan page. Choose Paste text for protected pages.');
+  if (/cannot access|missing host permission|not allowed|permission|extensions gallery/i.test(message)) return failure('SCAN_ACCESS_DENIED', 'extract', 'Chrome denied access to this tab. Open a regular article, refresh it, then click the pinned Undertone icon and Scan page. For a PDF or document viewer, please use Import file and select a downloaded PDF or DOCX. Choose Paste text for other protected pages.');
   if (/no tab|no frame|no document|frame.*removed|tab.*closed|document.*unloaded/i.test(message)) return failure('SCAN_PAGE_CHANGED', 'extract', 'The tab closed or navigated during the scan. Wait for the article to finish loading and scan again.');
   return failure('SCAN_SCRIPT_FAILED', 'extract', 'Chrome could not run the page extractor. Reload Undertone in chrome://extensions, refresh the article, and retry.');
 }
@@ -88,15 +88,20 @@ async function readPage(tabId, api, trace, fetcher) {
     let url;
     try { url = new URL(tab.url); }
     catch { throw failure('SCAN_INVALID_TAB', 'tab', 'Chrome did not provide a valid page address. Refresh the article and reopen Undertone.'); }
-    if (url.protocol === 'file:' && /\.pdf$/i.test(url.pathname)) {
-      if (!await api.extension.isAllowedFileSchemeAccess()) throw failure('PDF_FILE_ACCESS_REQUIRED', 'pdf', 'Enable Allow access to file URLs in chrome://extensions → Undertone → Details, then retry. Or choose Open PDF file in this popup.');
-      trace('pdf', 'PDF_DOWNLOAD_STARTED');
-      return readPdfUrl(tab.url, fetcher);
+    if(url.protocol==='file:' && /\.(pdf|docx)$/i.test(url.pathname)){
+      trace('import','LOCAL_FILE_READING');
+      const article=await readLocalDocument(tab.url,api,fetcher);
+      trace('import','FILE_TEXT_READY',{characters:article.text.length});
+      return article;
     }
+    const documentUrl=url.protocol==='file:' || /\.(pdf|docx?|xlsx?|pptx?|epub)$/i.test(url.pathname)
+      || (url.hostname==='docs.google.com' && /^\/(document|gview|viewer)\b/.test(url.pathname))
+      || (url.hostname==='drive.google.com' && url.pathname.startsWith('/file/'))
+      || url.hostname==='view.officeapps.live.com';
+    if(documentUrl)throw failure('SCAN_IMPORT_REQUIRED','tab','Please use Import file to read this document. Select a PDF or DOCX; download it first if it is online.');
     if (!['http:', 'https:'].includes(url.protocol) || url.hostname === 'chromewebstore.google.com' || (url.hostname === 'chrome.google.com' && url.pathname.startsWith('/webstore'))) {
       throw failure('SCAN_RESTRICTED_PAGE', 'tab', 'Chrome settings, new-tab pages, extension pages, local files and the Chrome Web Store cannot be scanned. Open a normal website article first. Choose Paste text for this content.');
     }
-    if (/\.pdf$/i.test(url.pathname)) { trace('pdf', 'PDF_DOWNLOAD_STARTED'); return readPdfUrl(tab.url, fetcher); }
   }
   trace('tab', 'SCAN_TAB_READY');
   let documentId;
@@ -110,24 +115,10 @@ async function readPage(tabId, api, trace, fetcher) {
   }
   let frames;
   try { frames = await api.scripting.executeScript({target: documentId ? {tabId, documentIds: [documentId]} : {tabId}, world: 'ISOLATED', func: extractArticle}); }
-  catch (error) {
-    // Chrome's built-in PDF viewer blocks DOM injection. Fetch the active
-    // document with the temporary activeTab grant and inspect its MIME type.
-    if(tab.url && injectionFailure(error).code !== 'SCAN_PAGE_CHANGED'){const pdf=await readPdfUrl(tab.url,fetcher,{probe:true});if(pdf){trace('pdf','PDF_TEXT_READY',{characters:pdf.text.length});return pdf;}}
-    throw injectionFailure(error);
-  }
+  catch (error) { throw injectionFailure(error); }
   const frame = frames?.find(frame => frame.frameId === 0) || frames?.[0];
   const result = frame?.result;
   if (!result) throw failure('SCAN_NO_RESULT', 'extract', 'Chrome returned no extraction result. The page may have navigated or blocked scripts. Refresh it and scan again.');
-  if (result.error?.code === 'SCAN_PDF_UNSUPPORTED' && tab.url) return readPdfUrl(tab.url,fetcher);
-  if (result.error?.code === 'SCAN_PDF_DOCUMENT' && tab.url) {
-    const embedded=new URL(result.pdfUrl||tab.url,tab.url);
-    if(embedded.origin===new URL(tab.url).origin && ['https:','http:'].includes(embedded.protocol)) {
-      const pdf=await readPdfUrl(embedded.href,fetcher,{probe:true});if(pdf)return pdf;
-    }
-    throw failure('PDF_OPEN_ORIGINAL','pdf','Open or download the original PDF from this viewer, then choose Scan page or Open PDF file in Undertone.');
-  }
-  if(result.error?.code==='SCAN_NO_TEXT'&&tab.url){const pdf=await readPdfUrl(tab.url,fetcher,{probe:true});if(pdf)return pdf;}
   if (result.error) throw failure(result.error.code, 'extract', result.error.message);
   if (typeof result.text !== 'string' || result.text.trim().length < 80) throw failure('SCAN_NO_TEXT', 'extract', 'The page did not contain 80 readable characters. Wait for it to load or choose Paste text.');
   trace('extract', 'SCAN_TEXT_READY', {characters: result.text.length, method: result.diagnostics?.method, warnings: result.diagnostics?.warnings});
@@ -188,27 +179,33 @@ export async function launchReader({mode, tabId, text, title}, api = chrome, cre
     console.info('[Undertone]', event);
   };
   try {
-    if (!['paste','scan','pdf'].includes(mode)) throw failure('INPUT_MODE_INVALID', 'input', 'Unknown reader action.');
+    if (!['paste','scan','import'].includes(mode)) throw failure('INPUT_MODE_INVALID', 'input', 'Unknown reader action.');
     const article = mode === 'scan' ? await readPage(tabId, api, trace, fetcher) : {text: typeof text === 'string' ? text.trim() : '', title: title || 'Reading selection', author: ''};
     if (article.text.length < 80) throw failure('INPUT_TOO_SHORT', 'input', 'Please provide at least 80 characters of reading text.');
     if (article.text.length > 100000) throw failure('INPUT_TOO_LONG', 'input', 'Please use an article under 100,000 characters.');
     trace('score', 'SCORING_STARTED', {characters: article.text.length});
-    const score = await prepareScore(article, mode === 'scan' && article.kind !== 'pdf', api, fetcher);
+    const score = await prepareScore(article, mode === 'scan' && !['pdf','docx'].includes(article.kind), api, fetcher);
     trace('store', 'SCORE_READY');
     const id = `undertone-article-${createId()}`;
     await api.storage.session.set({[id]: {score, title: article.title, author: article.author, createdAt: Date.now()}});
     try {
       await pruneReaders(api);
       trace('open', 'READER_OPENING');
-      await api.tabs.create({url: api.runtime.getURL(`reader/index.html?article=${encodeURIComponent(id)}`)});
+      const url=api.runtime.getURL(`reader/index.html?article=${encodeURIComponent(id)}`);
+      if(mode==='import' && api.windows?.getLastFocused){
+        let browserWindow;
+        try{browserWindow=await api.windows.getLastFocused({windowTypes:['normal']});}catch{}
+        if(Number.isInteger(browserWindow?.id))await api.tabs.create({url,windowId:browserWindow.id});
+        else await api.windows.create({url,type:'normal'});
+      }else await api.tabs.create({url});
     } catch (error) {
       await api.storage.session.remove(id);
       throw error;
     }
   } catch (error) {
-    const known = /^(SCAN|INPUT|SERVER|GEMINI|PDF)_[A-Z_]+$/.test(error?.code);
+    const known = /^(SCAN|INPUT|SERVER|GEMINI|PDF|DOCX|FILE)_[A-Z_]+$/.test(error?.code);
     const safe = known ? error : failure(stage === 'store' ? 'READER_STORAGE_FAILED' : 'READER_OPEN_FAILED', stage, 'Chrome could not save or open the reader. Reload Undertone in chrome://extensions and try again.');
-    safe.diagnostic = {code: safe.code, stage: safe.stage || stage, mode: ['scan','pdf'].includes(mode) ? mode : 'paste', events};
+    safe.diagnostic = {code: safe.code, stage: safe.stage || stage, mode: ['scan','import'].includes(mode) ? mode : 'paste', events};
     for (const field of ['httpStatus','upstreamStatus']) if (Number.isInteger(safe[field]) && safe[field] >= 100 && safe[field] <= 599) safe.diagnostic[field] = safe[field];
     throw safe;
   }

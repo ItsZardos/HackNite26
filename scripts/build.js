@@ -4,7 +4,7 @@ import path from 'node:path';
 
 const projectRoot = new URL('../', import.meta.url);
 const requiredFiles = [
-  'manifest.json', 'popup.html', 'popup.css', 'popup.js', 'background.js', 'reader-launch.js', 'pdf.js',
+  'manifest.json', 'popup.html', 'popup.css', 'popup.js', 'background.js', 'reader-launch.js', 'pdf.js', 'document-file.js', 'import.html', 'import.js', 'import.css',
   'vendor/Readability.js', 'vendor/LICENSE.md',
   'reader/index.html', 'reader/app.js', 'reader/style.css', 'reader/audio.js', 'reader/demo.js',
   ...['calm', 'happy', 'hopeful', 'melancholy', 'mysterious', 'tense', 'dark', 'triumphant'].map(mood => `public/music/${mood}.wav`)

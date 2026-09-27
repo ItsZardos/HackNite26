@@ -7,7 +7,7 @@ const messages={
   PDF_TEXT_TOO_LONG:'PDF contains more than 100,000 characters. Export a shorter selection of pages.',
   PDF_NO_TEXT:'PDF has fewer than 80 readable characters. Image-only scans need OCR first; export a searchable PDF or paste recognized text.',
   PDF_PASSWORD_REQUIRED:'PDF is password protected. Unlock it locally and select the unlocked copy.',
-  PDF_INVALID:'PDF could not be read. Download a fresh copy and choose Open PDF file.',
+  PDF_INVALID:'PDF could not be read. Download a fresh copy and choose Import file.',
   PDF_TIMEOUT:'PDF text extraction took too long. Choose a smaller file.',
   PDF_DEPENDENCY_MISSING:'PDF support is not installed. Run npm ci in the checkout, then restart npm start.'
 };

@@ -19,8 +19,7 @@
       <svg aria-hidden="true" viewBox="0 0 20 20" fill="none"><path d="M4 10h12m-5-5 5 5-5 5"/></svg>
     </button>
    </div>
-   <button id="open-pdf" class="pdf-choice" type="button">Open PDF file</button>
-   <input id="pdf-file" type="file" accept="application/pdf,.pdf" hidden>
+   <button id="import-file" class="import-choice" type="button">Import file <small>PDF or Word DOCX</small></button>
    <form id="paste-form" hidden>
     <button id="back" class="back" type="button">Back</button>
     <label for="text">Your reading text</label>
@@ -35,7 +34,7 @@
     <button id="copy-debug" type="button">Copy debug report</button>
     <p>Right-click this popup → Inspect → Console. Page extraction logs also appear in the article’s DevTools console. Filter for “Undertone”.</p>
   </details>
-  <p class="privacy">PDFs are read locally. Extracted text is sent to Gemini to prepare your reader.</p>
+  <p class="privacy">Files are read locally. Extracted text is sent to Gemini to prepare your reader.</p>
   <script type="module" src="popup.js"></script>
 </body>
 </html>

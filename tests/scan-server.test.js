@@ -1,3 +1,4 @@
+import {makeDocx} from './helpers/docx-fixture.js';
 import {makePdf} from './helpers/pdf-fixture.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -149,6 +150,11 @@ test('scan server streams scores, reports upstream errors and cancels disconnect
       server.stdout.once('data', () => { clearTimeout(timer); resolve(); });
       server.once('error', error => { clearTimeout(timer); reject(error); });
       server.once('exit', code => { clearTimeout(timer); reject(new Error(`Scan test server exited (${code}): ${stderr}`)); });
+    });
+
+    await t.test('DOCX endpoint extracts real binary before analysis',async()=>{
+      const response=await fetch(`http://127.0.0.1:${port}/api/docx-text`,{method:'POST',headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.wordprocessingml.document'},body:await makeDocx()});
+      assert.equal(response.status,200);assert.match((await response.json()).text,/quiet harbor/);
     });
 
     await t.test('PDF endpoint extracts binary locally and rejects wrong origins and content', async()=>{

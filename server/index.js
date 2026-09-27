@@ -6,6 +6,7 @@ import {analyze} from './gemini.js';
 import {isPublicPath} from './static-path.js';
 import {serveStaticFile} from './static-file.js';
 import {extractPdf, MAX_PDF_BYTES} from './pdf.js';
+import {extractDocx} from './docx.js';
 let activePdfs=0;
 const extensionRoot=fileURLToPath(new URL('../extension/',import.meta.url));
 const port=Number(process.env.PORT||8787); let active=0; const calls=[];
@@ -30,19 +31,21 @@ const server=http.createServer(async(req,res)=>{
  try {
   const url=new URL(req.url,local);
   if(url.pathname==='/api/health'){json(200,{ready:Boolean(process.env.GEMINI_API_KEY)});return;}
-  if(url.pathname==='/api/pdf-text'&&req.method==='POST'){
-   if(req.headers['content-type']?.split(';')[0]!=='application/pdf'){json(415,{code:'PDF_CONTENT_TYPE',error:'PDF upload required.'});return;}
-   if(activePdfs>=2){json(429,{code:'PDF_BUSY',error:'PDF extraction is busy. Wait a moment and retry.'});return;}
+  if(['/api/pdf-text','/api/docx-text'].includes(url.pathname)&&req.method==='POST'){
+   const docx=url.pathname==='/api/docx-text',prefix=docx?'DOCX':'PDF';
+   const contentType=docx?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':'application/pdf';
+   if(req.headers['content-type']?.split(';')[0]!==contentType){json(415,{code:prefix+'_CONTENT_TYPE',error:'Document upload required.'});return;}
+   if(activePdfs>=2){json(429,{code:prefix+'_BUSY',error:'Document extraction is busy. Wait a moment and retry.'});return;}
    activePdfs++;
    const controller=new AbortController();
    const disconnected=()=>{if(!res.writableEnded)controller.abort(new DOMException('Client disconnected.','AbortError'));};
    res.once('close',disconnected);
    try{
     const parts=[];let bytes=0;
-    for await(const part of req){bytes+=part.length;if(bytes>MAX_PDF_BYTES){json(413,{code:'PDF_TOO_LARGE',error:'PDF exceeds 20 MB. Choose a smaller file.'});return;}parts.push(part);}
-    const result=await extractPdf(Buffer.concat(parts),{signal:controller.signal});
+    for await(const part of req){bytes+=part.length;if(bytes>MAX_PDF_BYTES){json(413,{code:prefix+'_TOO_LARGE',error:'File exceeds 20 MB. Choose a smaller file.'});return;}parts.push(part);}
+    const result=await (docx?extractDocx:extractPdf)(Buffer.concat(parts),{signal:controller.signal});
     if(!res.destroyed)json(200,result);
-   }catch(error){if(!res.destroyed)json(errorStatus(error),{code:error.code?.startsWith('PDF_')?error.code:'PDF_INVALID',error:error.code?.startsWith('PDF_')?error.message:'PDF could not be read. Choose a fresh copy.'});}
+   }catch(error){if(!res.destroyed)json(errorStatus(error),{code:/^(PDF|DOCX)_[A-Z_]+$/.test(error.code)?error.code:prefix+'_INVALID',error:/^(PDF|DOCX)_[A-Z_]+$/.test(error.code)?error.message:'Document could not be read. Choose a fresh copy.'});}
    finally{activePdfs--;res.off('close',disconnected);}
    return;
   }

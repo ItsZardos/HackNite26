@@ -14,4 +14,4 @@ try {
   console.log('Kept your existing .env unchanged.');
 }
 await prepareExtension();
-console.log('Run npm ci to install PDF support. Add your Gemini key to the local .env file, run npm start, then pin Undertone in Chrome.');
+console.log('Run npm ci to install PDF/DOCX support. Add your Gemini key to the local .env file, run npm start, then pin Undertone in Chrome.');
